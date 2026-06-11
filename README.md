@@ -69,7 +69,8 @@ experience (a `gearbox` CLI, local dev stores).
 
 ```
 docs/
-  adr/        ADR-0001-pluggable-cog-stores.md  # the decision record
+  adr/        ADR-0001-pluggable-cog-stores.md  # the foundational decision
+              ADR-0002-store-info-and-tofu.md   # store.json identity + trust-on-first-use
   plans/      pluggable-cog-stores.md           # long-form design, rollout, prior art
               phase-1-implementation.md         # Phase 1: config-driven single store (done/specced)
               phase-2-implementation.md         # Phase 2: multi-store, namespacing, TOFU, auth

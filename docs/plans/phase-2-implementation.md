@@ -143,12 +143,13 @@ it). Each step keeps the official store working.
 
 ## 9. Open decisions
 
-1. **Store-info doc vs keys-in-catalog** — a separate `store.json` (recommended; lets
-   add-store work before/without a full catalog fetch) vs embedding keys in the catalog.
+1. ~~**Store-info doc vs keys-in-catalog**~~ — **resolved** ([ADR-0002](../adr/ADR-0002-store-info-and-tofu.md)):
+   a separate self-signed `store.json` + TOFU. Reference impl + vector exist in `crates/gearbox`.
 2. **Namespaced id syntax** — `store/cog` vs `@store/cog`; reserved chars in store ids.
+   (The resolver implements `store/cog` today, [crates/gearbox/src/resolve.rs](../../crates/gearbox/src/resolve.rs).)
 3. **Installed-cog fate on store removal** — keep running vs flag as orphaned vs uninstall.
 4. **Catalog refresh/caching** across N stores (TTL, manual refresh, offline).
-5. **ADR-0002?** — the store-info doc + TOFU likely warrant their own short ADR.
+5. ~~**ADR-0002?**~~ — **done**: [ADR-0002 (Store-info document & trust-on-first-use)](../adr/ADR-0002-store-info-and-tofu.md).
 
 ## 10. Acceptance criteria
 
