@@ -1,0 +1,41 @@
+# Fixture for the catalog-generator self-test — a trimmed but realistic API cog with an
+# asset. Values (FreeDoom sha256/size) are the real ones; the binary is a stub artifact.
+[cog]
+id = "doom"
+name = "DOOM"
+version = "0.1.0"
+category = "games"
+description = "Play DOOM on your Seed from any browser. Renders on-device."
+binary = "cog-doom-arm"
+hardware_requirement = "pi-zero-2w"
+
+[config.jpeg_quality]
+type = "integer"
+label = "JPEG quality"
+default = 55
+min = 1
+max = 100
+cli_arg = "--jpeg-quality"
+
+[api]
+bind_port = 8066
+bind_loopback_only = true
+endpoints = [
+    { path = "/",       methods = ["GET"],  auth = "open" },
+    { path = "/health", methods = ["GET"],  auth = "open" },
+    { path = "/frame",  methods = ["GET"],  auth = "paired" },
+]
+
+[[assets]]
+id = "freedoom1-wad"
+filename = "freedoom1.wad"
+size_bytes = 28_795_076
+sha256 = "7323bcc168c5a45ff10749b339960e98314740a734c30d4b9f3337001f9e703d"
+gcs_path = "wads/freedoom1.wad"
+source_url = "https://github.com/freedoom/freedoom/releases/download/v0.13.0/freedoom-0.13.0.zip"
+license = "BSD-3-Clause (FreeDoom)"
+
+[console]
+allowed_commands = ["--help", "--version"]
+max_runtime_secs = 30
+output_limit_bytes = 65536

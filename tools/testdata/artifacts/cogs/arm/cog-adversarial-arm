@@ -1,0 +1,2 @@
+stub artifact — stands in for the cross-compiled cog-adversarial-arm binary in the
+generator self-test. The generator hashes whatever bytes are staged here.

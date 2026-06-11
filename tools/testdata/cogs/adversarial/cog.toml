@@ -1,0 +1,21 @@
+# Fixture: a simple sensor cog with no downloadable assets and a resource budget.
+[cog]
+id = "adversarial"
+name = "Adversarial Detector"
+version = "1.0.0"
+category = "security"
+description = "Flags adversarial perturbations in the sensor stream."
+binary = "cog-adversarial-arm"
+hardware_requirement = "pi-zero-2w"
+
+[config.interval_ms]
+type = "integer"
+label = "Sampling interval (ms)"
+default = 500
+min = 50
+max = 5000
+cli_arg = "--interval-ms"
+
+[resources]
+ram_mb = 64
+cpu_pct = 30

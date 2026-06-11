@@ -73,11 +73,14 @@ docs/
   plans/      pluggable-cog-stores.md           # long-form design, rollout, prior art
               phase-1-implementation.md         # Phase 1 cross-repo task plan + issues
   protocol/   cog-store-protocol.md             # the store + catalog + signing contract
+              testvectors/                      # executable signing contract (gearbox#1)
   research/   cog-store-enhancements.md         # forward-looking feature research / roadmap
+tools/                                          # Python reference catalog generator + signer (gearbox#2)
+  catalog_gen.py · cogstore/ · testdata/ · selftest.sh
 ```
 
-Planned (not yet built): `crates/` — catalog generator, signer, and a reference store
-server (Rust, to match the ecosystem); a `gearbox` CLI.
+Planned (not yet built): `crates/` — the native Rust `gearbox` CLI and a reference store
+server (gearbox#3), plus the device-side verifier in `cognitum-one/seed`.
 
 ## Relationship to the rest of Cognitum
 
