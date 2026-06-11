@@ -138,8 +138,10 @@ signature, a catalog can carry its signature inside the same document.
 
 JCS pins the parts that bite: object members sorted by UTF-16 code-unit order, no
 insignificant whitespace, minimal string escaping, and ECMAScript number formatting.
-**Guidance:** v0 catalogs SHOULD restrict numeric fields to integers (sizes, ports);
-floats invite JCS number-formatting subtleties — keep them out of the schema.
+**Constraints** (so the reference implementations agree byte-for-byte): numbers are
+**integers**, object **keys** are **ASCII**, and string **values** may be any UTF-8 (emitted
+as UTF-8 per RFC 8785). The tooling rejects floats and non-ASCII keys rather than risk a
+divergent encoding.
 
 ### 7.2 Signature envelope
 
@@ -181,7 +183,37 @@ OpenSSL). Implementers MUST reproduce the same canonical bytes and verify the sa
 signature — if your canonicalizer's output differs from `catalog.canonical.json`
 byte-for-byte, your JCS is wrong.
 
-## 8. Open items (v0 → v1)
+## 8. Store-info document (`store.json`) — trust-on-first-use
+
+Before a Seed can trust a *new* store it needs that store's public key(s). A store therefore
+publishes a small **store-info document** at a well-known path (`store.json`):
+
+```jsonc
+{
+  "schema_version": 1,
+  "store_id": "acme-internal",
+  "name": "ACME Internal Cogs",
+  "description": "Internal cogs for ACME devices.",
+  "keys": [ { "key_id": "acme-signing-2026", "alg": "ed25519", "pubkey_b64": "…" } ],
+  "catalog_url": "https://cogs.acme.internal/app-registry.json",
+  "signature": { "key_id": "acme-signing-2026", "alg": "ed25519", "sig": "…" }
+}
+```
+
+- It is **self-signed** with the same envelope + JCS as the catalog (§7), by one of its own
+  listed keys. The self-signature is *integrity* (the doc isn't truncated/altered) — **not**
+  authority.
+- **Add-store flow (TOFU):** fetch `store.json` → show each key's **fingerprint** (§7.3) →
+  the user confirms → the keys are **pinned** as that store's trust anchor. Thereafter the
+  store's catalog (and any refreshed `store.json`) must verify against a pinned key (§4/§7);
+  a later key change re-prompts (SSH-known-hosts model). The official store ships its key
+  with the Seed (no prompt); private stores are admin-provisioned.
+
+A committed reference + vector lives in [`testvectors/`](testvectors/) (`store.signed.json`,
+`store.canonical.json`). This is a Phase-2 surface — see the
+[Phase 2 plan §4](../plans/phase-2-implementation.md).
+
+## 9. Open items (v0 → v1)
 
 - Key rotation: multiple valid keys per store during overlap; revocation list.
 - Whether to require a transparency-log inclusion proof for public stores.

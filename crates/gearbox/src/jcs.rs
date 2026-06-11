@@ -1,10 +1,10 @@
 //! RFC 8785 (JSON Canonicalization Scheme) for the cog-store subset.
 //!
-//! Catalogs are restricted to ASCII strings and integer numbers (protocol §7.1), so this
-//! faithful subset implementation suffices and avoids a JCS-crate dependency. `canonical`
-//! MUST reproduce `docs/protocol/testvectors/catalog.canonical.json` byte-for-byte — the
-//! integration test asserts it. Non-integer numbers are rejected rather than emitted with
-//! a guessed format.
+//! Documents are restricted to integer numbers and ASCII object keys (protocol §7.1); string
+//! *values* may be any UTF-8 (emitted as UTF-8, per RFC 8785). This faithful subset
+//! implementation suffices and avoids a JCS-crate dependency. `canonical` MUST reproduce the
+//! committed `docs/protocol/testvectors/*.canonical.json` byte-for-byte — the integration
+//! tests assert it. Non-integer numbers are rejected rather than emitted with a guessed format.
 
 use serde_json::Value;
 

@@ -1,0 +1,19 @@
+{
+  "catalog_url": "https://example.invalid/app-registry.json",
+  "description": "Throwaway test store — DO NOT trust.",
+  "keys": [
+    {
+      "alg": "ed25519",
+      "key_id": "gearbox-testvector-2026",
+      "pubkey_b64": "A6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg="
+    }
+  ],
+  "name": "Gearbox Test Store",
+  "schema_version": 1,
+  "signature": {
+    "alg": "ed25519",
+    "key_id": "gearbox-testvector-2026",
+    "sig": "sBAhWirzjW6SVYveXjCIOaRVgbWmmFXbVwz4W6OMO6JgpKgfgUqepNfVEj5W6piWfxPp00pSk6ucAJaCHJR5Bw=="
+  },
+  "store_id": "gearbox-testvector"
+}

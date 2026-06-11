@@ -52,8 +52,17 @@ openssl pkeyutl -verify -pubin -inkey pub.pem -rawin \
 # Signature Verified Successfully
 ```
 
+## Store-info vector
+
+`store.signed.json` + `store.canonical.json` are the **store-info document** equivalents
+(protocol §8) — a `store.json` self-signed with the **same** test key
+(`gearbox-testvector-2026`). Its `description` carries a non-ASCII em-dash **on purpose**:
+string values may be any UTF-8 (object keys stay ASCII, numbers stay integers), and the Rust
+(`crates/gearbox`) and Python (`tools/`) implementations canonicalize it identically — each
+asserts JCS == its `*.canonical.json` in its test suite.
+
 ## Regenerate
 
 Deterministic from the seed above. Re-running the generator yields byte-identical
-files; if your JCS output differs from `catalog.canonical.json`, your
-canonicalization is wrong.
+files; if your JCS output differs from `catalog.canonical.json` (or `store.canonical.json`),
+your canonicalization is wrong.

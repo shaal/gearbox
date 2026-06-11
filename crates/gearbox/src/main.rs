@@ -1,10 +1,13 @@
 //! `gearbox` CLI — native reference for the cog-store protocol.
 //!
 //! Subcommands:
-//!   verify   <catalog.json> --key-id <ID> --pubkey-b64 <B64>
-//!   catalog  --cogs-dir DIR (--artifacts-dir DIR | --manifests-only) --store-id ID
-//!            --generated-at TS --out FILE [--sign-seed-hex HEX --key-id ID]
-//!   sign     --in FILE --out FILE --sign-seed-hex HEX --key-id ID
+//!   verify       <catalog.json> --key-id <ID> --pubkey-b64 <B64>
+//!   catalog      --cogs-dir DIR (--artifacts-dir DIR | --manifests-only) --store-id ID
+//!                --generated-at TS --out FILE [--sign-seed-hex HEX --key-id ID]
+//!   sign         --in FILE --out FILE --sign-seed-hex HEX --key-id ID
+//!   store-info create --store-id ID --name NAME [--description D] --catalog-url URL
+//!                --key-id KID (--sign-seed-hex HEX | --pubkey-b64 B64) --out FILE
+//!   store-info verify <store.json>
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -14,14 +17,17 @@ use std::process::exit;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde_json::Value;
 
-use gearbox::{catalog, signing};
+use gearbox::{catalog, signing, store};
 
 const USAGE: &str = "\
 usage:
   gearbox verify  <catalog.json> --key-id <ID> --pubkey-b64 <B64>
   gearbox catalog --cogs-dir DIR (--artifacts-dir DIR | --manifests-only) \\
                   --store-id ID --generated-at TS --out FILE [--sign-seed-hex HEX --key-id ID]
-  gearbox sign    --in FILE --out FILE --sign-seed-hex HEX --key-id ID";
+  gearbox sign    --in FILE --out FILE --sign-seed-hex HEX --key-id ID
+  gearbox store-info create --store-id ID --name NAME [--description D] --catalog-url URL \\
+                  --key-id KID (--sign-seed-hex HEX | --pubkey-b64 B64) --out FILE
+  gearbox store-info verify <store.json>";
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -29,6 +35,14 @@ fn main() {
         Some("verify") => cmd_verify(&args[2..]),
         Some("catalog") => cmd_catalog(&args[2..]),
         Some("sign") => cmd_sign(&args[2..]),
+        Some("store-info") => match args.get(2).map(String::as_str) {
+            Some("create") => cmd_store_create(&args[3..]),
+            Some("verify") => cmd_store_verify(&args[3..]),
+            _ => {
+                eprintln!("{USAGE}");
+                2
+            }
+        },
         _ => {
             eprintln!("{USAGE}");
             2
@@ -69,9 +83,14 @@ fn read_json(path: &str) -> Result<Value, String> {
     serde_json::from_slice(&bytes).map_err(|e| format!("parse {path}: {e}"))
 }
 
+fn write_json(path: &str, value: &Value) -> Result<(), String> {
+    let pretty = serde_json::to_string_pretty(value).map_err(|e| e.to_string())?;
+    fs::write(path, pretty + "\n").map_err(|e| format!("write {path}: {e}"))
+}
+
 fn decode_seed(h: &str) -> Result<[u8; 32], String> {
-    let v = hex::decode(h.trim()).map_err(|e| format!("--sign-seed-hex not hex: {e}"))?;
-    v.try_into().map_err(|_| "--sign-seed-hex must decode to 32 bytes".to_string())
+    let v = hex::decode(h.trim()).map_err(|e| format!("seed not hex: {e}"))?;
+    v.try_into().map_err(|_| "seed must decode to 32 bytes".to_string())
 }
 
 fn maybe_sign(catalog: Value, kv: &HashMap<String, String>) -> Result<(Value, bool), String> {
@@ -83,11 +102,6 @@ fn maybe_sign(catalog: Value, kv: &HashMap<String, String>) -> Result<(Value, bo
             Ok((signing::sign_catalog(&catalog, &seed, key_id)?, true))
         }
     }
-}
-
-fn write_json(path: &str, value: &Value) -> Result<(), String> {
-    let pretty = serde_json::to_string_pretty(value).map_err(|e| e.to_string())?;
-    fs::write(path, pretty + "\n").map_err(|e| format!("write {path}: {e}"))
 }
 
 fn cmd_verify(args: &[String]) -> i32 {
@@ -206,7 +220,7 @@ fn cmd_sign(args: &[String]) -> i32 {
     };
     let result = read_json(inp)
         .and_then(|c| decode_seed(seed_hex).map(|s| (c, s)))
-        .and_then(|(c, s)| signing::sign_catalog(&c, &s, key_id))
+        .and_then(|(c, s)| signing::sign_document(&c, &s, key_id))
         .and_then(|signed| write_json(out, &signed));
     match result {
         Ok(()) => {
@@ -217,5 +231,137 @@ fn cmd_sign(args: &[String]) -> i32 {
             eprintln!("FAIL: {e}");
             1
         }
+    }
+}
+
+fn cmd_store_create(args: &[String]) -> i32 {
+    let (kv, _, _) = match parse_flags(args, &[]) {
+        Ok(x) => x,
+        Err(e) => {
+            eprintln!("{e}\n{USAGE}");
+            return 2;
+        }
+    };
+    let (Some(store_id), Some(name), Some(catalog_url), Some(key_id), Some(out)) = (
+        kv.get("--store-id"),
+        kv.get("--name"),
+        kv.get("--catalog-url"),
+        kv.get("--key-id"),
+        kv.get("--out"),
+    ) else {
+        eprintln!("{USAGE}");
+        return 2;
+    };
+    let description = kv.get("--description").map(String::as_str).unwrap_or("");
+
+    // Either derive the public key from a private seed (and self-sign), or take a bare
+    // --pubkey-b64 (unsigned). If both are given, they must agree.
+    let (pubkey_b64, seed): (String, Option<[u8; 32]>) =
+        match (kv.get("--sign-seed-hex"), kv.get("--pubkey-b64")) {
+            (Some(hex_seed), pb) => {
+                let seed = match decode_seed(hex_seed) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        eprintln!("FAIL: --sign-seed-hex {e}");
+                        return 2;
+                    }
+                };
+                let derived = signing::public_key_b64(&seed);
+                if let Some(pb) = pb {
+                    if pb != &derived {
+                        eprintln!("FAIL: --pubkey-b64 does not match the key derived from --sign-seed-hex");
+                        return 1;
+                    }
+                }
+                (derived, Some(seed))
+            }
+            (None, Some(pb)) => (pb.clone(), None),
+            (None, None) => {
+                eprintln!("provide --sign-seed-hex (to self-sign) or --pubkey-b64");
+                return 2;
+            }
+        };
+
+    let doc = match store::build_store_info(store_id, name, description, catalog_url, key_id, &pubkey_b64) {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("FAIL: {e}");
+            return 1;
+        }
+    };
+    let signed = seed.is_some();
+    let doc = match seed {
+        Some(s) => match signing::sign_document(&doc, &s, key_id) {
+            Ok(d) => d,
+            Err(e) => {
+                eprintln!("FAIL: {e}");
+                return 1;
+            }
+        },
+        None => doc,
+    };
+    if let Err(e) = store::validate(&doc) {
+        eprintln!("FAIL: {e}");
+        return 1;
+    }
+    if let Err(e) = write_json(out, &doc) {
+        eprintln!("FAIL: {e}");
+        return 1;
+    }
+    println!(
+        "wrote {out} — store {store_id} ({}, key {key_id})",
+        if signed { "self-signed" } else { "unsigned" }
+    );
+    0
+}
+
+fn cmd_store_verify(args: &[String]) -> i32 {
+    let (kv, _, pos) = match parse_flags(args, &[]) {
+        Ok(x) => x,
+        Err(e) => {
+            eprintln!("{e}\n{USAGE}");
+            return 2;
+        }
+    };
+    let Some(path) = pos.first().or_else(|| kv.get("--in")) else {
+        eprintln!("usage: gearbox store-info verify <store.json>");
+        return 2;
+    };
+    let doc = match read_json(path) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("FAIL: {e}");
+            return 1;
+        }
+    };
+    if let Err(e) = store::validate(&doc) {
+        eprintln!("FAIL: {e}");
+        return 1;
+    }
+    match store::fingerprints(&doc) {
+        Ok(fps) => {
+            for (kid, fp) in fps {
+                println!("key {kid}: fingerprint {fp}");
+            }
+        }
+        Err(e) => {
+            eprintln!("FAIL: {e}");
+            return 1;
+        }
+    }
+    if doc.get("signature").is_some() {
+        match store::verify_self_signed(&doc) {
+            Ok(kid) => {
+                println!("OK: store.json self-signed and verified by {kid}");
+                0
+            }
+            Err(e) => {
+                eprintln!("FAIL: self-signature: {e}");
+                1
+            }
+        }
+    } else {
+        println!("note: store.json is unsigned — confirm the fingerprint(s) above to pin (TOFU)");
+        0
     }
 }

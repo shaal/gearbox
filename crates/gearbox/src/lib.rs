@@ -9,3 +9,4 @@
 pub mod catalog;
 pub mod jcs;
 pub mod signing;
+pub mod store;

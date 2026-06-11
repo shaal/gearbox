@@ -1,15 +1,15 @@
-"""RFC 8785 (JSON Canonicalization Scheme) — the subset cog-store catalogs use.
+"""RFC 8785 (JSON Canonicalization Scheme) — the subset cog-store documents use.
 
-Catalogs are restricted to ASCII strings and integer numbers (protocol §7.1), where
-RFC 8785 coincides exactly with
+Documents are restricted to **integer numbers** and **ASCII object keys**; string *values*
+may be any UTF-8. Under those constraints RFC 8785 coincides exactly with
     json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+and matches the Rust reference (`crates/gearbox`) byte-for-byte.
 
-`canonical()` MUST produce bytes identical to
-docs/protocol/testvectors/catalog.canonical.json — the package self-test asserts it,
-so a regression here is caught immediately.
+`canonical()` MUST produce bytes identical to the committed test vectors
+(docs/protocol/testvectors/*.canonical.json) — the self-tests assert it.
 
-For general content (floats, non-ASCII) a full RFC 8785 implementation is required; the
-guard below refuses anything outside the supported subset rather than emit wrong bytes.
+Floats and non-ASCII keys are refused (they would need full RFC 8785 number formatting /
+UTF-16 key ordering) rather than emit bytes that might diverge from a conforming impl.
 """
 import json
 
@@ -28,15 +28,15 @@ def _assert_subset(o, path="$"):
     if isinstance(o, float):
         raise ValueError(f"{path}: float not allowed — use integers (protocol §7.1)")
     if isinstance(o, str):
-        try:
-            o.encode("ascii")
-        except UnicodeEncodeError:
-            raise ValueError(f"{path}: non-ASCII string outside this JCS subset")
-        return
+        return  # string values may be any UTF-8 (emitted as UTF-8 per RFC 8785)
     if isinstance(o, dict):
         for k, v in o.items():
             if not isinstance(k, str):
                 raise ValueError(f"{path}: non-string object key {k!r}")
+            try:
+                k.encode("ascii")  # keys must be ASCII: json.dumps sorts by code point,
+            except UnicodeEncodeError:  # which only matches RFC 8785 UTF-16 order for ASCII
+                raise ValueError(f"{path}: non-ASCII object key {k!r} (keys must be ASCII)")
             _assert_subset(v, f"{path}.{k}")
         return
     if isinstance(o, list):
