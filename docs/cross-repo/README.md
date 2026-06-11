@@ -15,7 +15,7 @@ The two **Gearbox-native** pieces are real here, not staged: the signing contrac
 | A1 | cogs | `path` manifest field (alias `gcs_path`) + CI gate | **Drafted** — [cogs/A1](cogs/A1-path-manifest-field.md) |
 | A3 | cogs | CI: catalog builds from manifests + hash gate | Outline — [cogs/A3](cogs/A3-catalog-ci-gate.md) |
 | A4 | seed ¹ | Sign the official catalog in the publish pipeline | Outline — [seed/A4](seed/A4-sign-catalog-in-publish.md) |
-| B1 | seed | `StoreDescriptor` config; remove the hardcoded base | Outline — [seed/B1](seed/B1-store-descriptor-config.md) |
+| B1 | seed | `StoreDescriptor` config; remove the hardcoded base | **Drafted** — [seed/B1](seed/B1-store-descriptor-config.md) |
 | B2 | seed | `Fetcher` trait (`gs://`, `https://`) | Outline — [seed/B2](seed/B2-fetcher-trait.md) |
 | B3 | seed | Load the catalog from `catalog_url` | Outline — [seed/B3](seed/B3-catalog-loader.md) |
 | B4 | seed | Verify the catalog signature; fail closed | **Drafted** — [seed/B4](seed/B4-verify-signature.md) |
