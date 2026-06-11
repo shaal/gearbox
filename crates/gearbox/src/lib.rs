@@ -8,6 +8,7 @@
 
 pub mod catalog;
 pub mod jcs;
+pub mod resolve;
 pub mod server;
 pub mod signing;
 pub mod store;

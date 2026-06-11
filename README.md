@@ -79,7 +79,7 @@ docs/
 tools/                                          # Python reference catalog generator + signer (gearbox#2)
   catalog_gen.py · verify_catalog.py · cogstore/ · testdata/ · selftest.sh
 crates/gearbox/                                 # native Rust reference (gearbox#3): catalog + store-info + serve
-  src/ (jcs · signing · catalog · store · server · CLI) · tests/ — byte-for-byte vs the vectors + Python parity
+  src/ (jcs · signing · catalog · store · resolve · server · CLI) · tests/ — byte-for-byte vs the vectors + Python parity
 examples/store-loop.sh                          # e2e demo: serve -> TOFU -> verify catalog -> fetch+hash artifact
 ```
 

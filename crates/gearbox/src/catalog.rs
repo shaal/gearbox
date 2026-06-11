@@ -84,6 +84,19 @@ pub fn build_cog_version(
     }))
 }
 
+/// The cog ids a catalog offers — for building a `resolve::Resolver`'s offerings map.
+pub fn cog_ids(catalog: &Value) -> Vec<String> {
+    catalog
+        .get("cogs")
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(|c| c.get("id").and_then(Value::as_str).map(String::from))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 pub fn build_catalog(
     cogs_dir: &Path, artifacts_dir: Option<&Path>, store_id: &str, generated_at: &str,
     manifests_only: bool,
