@@ -17,7 +17,7 @@ use std::process::exit;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde_json::Value;
 
-use gearbox::{catalog, signing, store};
+use gearbox::{catalog, server, signing, store};
 
 const USAGE: &str = "\
 usage:
@@ -27,7 +27,8 @@ usage:
   gearbox sign    --in FILE --out FILE --sign-seed-hex HEX --key-id ID
   gearbox store-info create --store-id ID --name NAME [--description D] --catalog-url URL \\
                   --key-id KID (--sign-seed-hex HEX | --pubkey-b64 B64) --out FILE
-  gearbox store-info verify <store.json>";
+  gearbox store-info verify <store.json>
+  gearbox serve   --dir DIR [--port N] [--auth-token TOKEN]";
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -43,6 +44,7 @@ fn main() {
                 2
             }
         },
+        Some("serve") => cmd_serve(&args[2..]),
         _ => {
             eprintln!("{USAGE}");
             2
@@ -313,6 +315,38 @@ fn cmd_store_create(args: &[String]) -> i32 {
         if signed { "self-signed" } else { "unsigned" }
     );
     0
+}
+
+fn cmd_serve(args: &[String]) -> i32 {
+    let (kv, _, _) = match parse_flags(args, &[]) {
+        Ok(x) => x,
+        Err(e) => {
+            eprintln!("{e}\n{USAGE}");
+            return 2;
+        }
+    };
+    let Some(dir) = kv.get("--dir") else {
+        eprintln!("usage: gearbox serve --dir DIR [--port N] [--auth-token TOKEN]");
+        return 2;
+    };
+    let port: u16 = match kv.get("--port") {
+        Some(s) => match s.parse() {
+            Ok(p) => p,
+            Err(_) => {
+                eprintln!("--port must be 0..65535");
+                return 2;
+            }
+        },
+        None => 8088,
+    };
+    let auth = kv.get("--auth-token").map(String::as_str);
+    match server::serve(Path::new(dir), port, auth) {
+        Ok(()) => 0,
+        Err(e) => {
+            eprintln!("FAIL: {e}");
+            1
+        }
+    }
 }
 
 fn cmd_store_verify(args: &[String]) -> i32 {

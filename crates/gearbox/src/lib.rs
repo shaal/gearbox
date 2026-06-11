@@ -8,5 +8,6 @@
 
 pub mod catalog;
 pub mod jcs;
+pub mod server;
 pub mod signing;
 pub mod store;
