@@ -102,6 +102,14 @@ Planned: a reference store server; multi-store (Phase 2). The device-side verifi
 | [`cognitum-one/seed`](https://github.com/cognitum-one/seed) | The device runtime that installs/runs cogs (consumes stores) |
 | **gearbox** (this repo) | The store protocol + tooling that makes stores pluggable |
 
+## Contributing
+
+Early and spec-driven — see [CONTRIBUTING.md](CONTRIBUTING.md). The short version: the test
+vectors in `docs/protocol/testvectors/` are the contract (changes must keep them byte-for-byte
+and the Rust ↔ Python implementations in agreement), and protocol changes go through an ADR.
+Build + test with `cargo test --manifest-path crates/gearbox/Cargo.toml` and `tools/selftest.sh`.
+Security issues: please use a private GitHub security advisory, not a public issue.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
