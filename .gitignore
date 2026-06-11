@@ -1,0 +1,22 @@
+# Rust
+/target
+**/*.rs.bk
+Cargo.lock
+
+# Signing keys / secrets — never commit
+*.key
+*.pem
+secrets/
+.env
+.env.*
+
+# Generated catalogs / artifacts (build output)
+/dist
+/out
+*.app-registry.json
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
