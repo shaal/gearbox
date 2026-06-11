@@ -1,6 +1,6 @@
 # Phase 1 — Config-driven single store (implementation plan)
 
-**Status**: Ready for review
+**Status**: Specification
 **Date**: 2026-06-10
 **Parent**: [ADR-0001 (Pluggable cog stores)](../adr/ADR-0001-pluggable-cog-stores.md) ·
 [Plan: Pluggable cog stores](pluggable-cog-stores.md) ·

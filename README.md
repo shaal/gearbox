@@ -28,6 +28,12 @@ Today a Seed installs cogs from exactly one place: a hardcoded bucket
 
 Gearbox is the mechanism for all three.
 
+Gearbox isn't a generic artifact registry — hosting and signing files is already solved
+(Harbor, Artifactory, Cosign/Sigstore). The point is the **Seed-specific** contract: the
+`cog.toml` manifest (the capabilities, permissions, and resource budgets a Seed enforces)
+plus the device-side install → verify → run path. A plain registry stores bytes; Gearbox
+distributes *cogs a Seed can trust and run*.
+
 ## The model
 
 A **store** is a named source the Seed trusts: a catalog URL + an artifact base + a

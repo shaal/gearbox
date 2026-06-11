@@ -80,10 +80,10 @@ SBOM / vuln* layer that procurement increasingly checks is unbuilt.
 
 ## Road to enterprise-ready (priority)
 
-This is effectively the **seed of a Phase-3 plan**. Ordered: in-our-control, demoable wins
+This is effectively the **seed of a Phase-3 plan**. Ordered: self-contained, demoable wins
 first; then first-deployment table-stakes; then compliance.
 
-**Tier 0 — demoable, in-our-control:**
+**Tier 0 — demoable, self-contained (buildable in this repo):**
 1. Air-gap **bundle export** (`gearbox export`) — §5.
 2. **Audit / event log** — §4.
 3. **Managed-mode policy** (allow-only-approved-stores, enforced pins) — §3.

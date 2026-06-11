@@ -137,7 +137,7 @@ A (multi-store resolution) ───┘                          │
         └─► B (namespacing + pinning) ──────────────────┘─► E (auth) ─► F (UX)
 ```
 
-Land **G + D** first (you can't trust a second store without its keys), then **A/B/C** (the
+Land **G + D** first (a second store can't be trusted without its keys), then **A/B/C** (the
 resolution + merge core), then **E** (private-store auth), then **F** (the UX that exposes
 it). Each step keeps the official store working.
 

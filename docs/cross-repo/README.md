@@ -1,9 +1,9 @@
-# Cross-repo change specs (staged in Gearbox)
+# Cross-repo specifications
 
-Phase 1 work that targets **`cognitum-one/cogs`** or **`cognitum-one/seed`** is drafted
-here first — under `docs/cross-repo/` — instead of being filed as issues/PRs in those
-repos. Each doc is a ready-to-apply blueprint; when we're ready it becomes a PR or issue
-in its target repo. This keeps the whole initiative reviewable in one place.
+These are implementation specs for work that lands in **`cognitum-one/cogs`** (the cog
+manifests) and **`cognitum-one/seed`** (the device runtime). They live here, next to the
+protocol they implement, so the whole design is reviewable in one place; each becomes a PR
+or issue in its target repo when implementation starts.
 
 The two **Gearbox-native** pieces are real here, not staged: the signing contract
 (`docs/protocol/` + test vector, issue #1) and the catalog generator (`tools/`, issue #2).

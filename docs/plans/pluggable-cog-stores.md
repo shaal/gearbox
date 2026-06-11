@@ -2,7 +2,7 @@
 
 **Status**: Draft / research
 **Date**: 2026-06-10
-**Owner**: gearbox maintainers + cognitum-one/seed + cognitum-one/cogs (cross-repo)
+**Scope**: cross-repo — gearbox (spec) · cognitum-one/seed (runtime) · cognitum-one/cogs (manifests)
 **Related**: [ADR-0001 (Pluggable cog stores)](../adr/ADR-0001-pluggable-cog-stores.md),
 [Cog Store Protocol](../protocol/cog-store-protocol.md),
 [cognitum-one/cogs ADR-001 (Cogs as plugins)](https://github.com/cognitum-one/cogs/blob/main/docs/adrs/ADR-001-cogs-as-plugins-architecture.md),
@@ -46,7 +46,7 @@ The questions this plan answers:
 
 ## 2. How the cog store works today
 
-Decomposing the current system is the whole game: once we name the parts, "an
+Decomposing the current system is the whole game: once the parts are named, "an
 alternative store" is just "make these parts point somewhere else, safely."
 
 ### 2.1 The pieces
