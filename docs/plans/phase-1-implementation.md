@@ -53,8 +53,8 @@ Three repos. Most work is in `seed`; `cogs` gets the additive manifest + publish
   location; keep `gcs_path` as a documented alias. Exactly one of the two must be present.
   Update `manifest-validate` CI accordingly and document `path` in the cog authoring guide.
 - **A2. Catalog generator.** A tool that walks `src/cogs/*/cog.toml` and emits
-  `app-registry.json` per the protocol (relative paths, sizes, sha256). *Open: lives in
-  `cogs` or `gearbox`* — decide before starting (see §6).
+  `app-registry.json` per the protocol (relative paths, sizes, sha256). Lives in
+  **`gearbox`**, invoked from `cogs` CI (resolved §6).
 - **A3. CI: catalog build + hash gates.** Extend the existing `asset-sha256` gate to cover
   catalog entries; add a check that the catalog generates and round-trips.
 - **A4. Signing in publish.** After generating the catalog, sign it with the official
@@ -111,17 +111,24 @@ makes signing mandatory.
 | Signing flag-day breaks installs | `require_signed_catalog` defaults off for one release (B6) |
 | Signer/verifier disagree on bytes | C1 freezes canonical-JSON first; C2 reference impl cross-checks |
 | `path`/`gcs_path` ambiguity | CI requires exactly one (A1) |
-| Official signing-key custody | Decide key home + access before A4; rotate-ready format in C1 |
-| Catalog generator ownership unclear | Resolve §6 before A2 |
+| Official signing-key custody | Resolved §6: org secret manager → `STORE_SIGNING_KEY`; date-scoped `key_id` for additive rotation |
+| Catalog generator ownership | Resolved §6: lives in `gearbox`, invoked from `cogs` CI |
 
-## 6. Open decisions (resolve before coding)
+## 6. Decisions (resolved 2026-06-10)
 
-1. **Catalog generator home** — `gearbox` (reusable by any operator, matches "spec lives
-   here") vs `cogs` (closest to the manifests). *Recommendation: `gearbox`, invoked from
-   `cogs` CI.*
-2. **Official signing key custody** — where it lives, who can sign, rotation cadence.
-3. **`https://` in Phase 1** — confirm we want the second fetcher now (cheap, and it's what
-   proves "config-driven"); `s3`/`oci`/`file` stay stubbed.
+1. **Catalog generator home → `gearbox`.** Reusable by any store operator and kept next to
+   the spec and its reference producer; `cogs` CI invokes it as a build step rather than
+   vendoring its own copy. (Issue #3 is tagged `[gearbox]` accordingly.)
+2. **Official signing-key custody.** The private ed25519 key lives in the org secret
+   manager and is exposed to the `cogs` publish workflow only as the `STORE_SIGNING_KEY`
+   CI secret — never committed, never inside a cog. Access is limited to release
+   maintainers. The matching public key ships embedded in the Seed as the sole Phase 1
+   trust anchor. The `key_id` is date-scoped (e.g. `cognitum-release-2026`) so rotation is
+   additive: publish a new key, trust both during an overlap window, then retire the old
+   one. Keyless/OIDC signing is a later hardening, not Phase 1.
+3. **`https://` ships in Phase 1.** It's the cheap second fetcher that actually *proves*
+   the base is config-driven — point `artifact_base` at an HTTPS mirror of the same bytes
+   and installs still work. `s3://`/`oci://`/`file://` stay stubbed until Phase 2/3.
 
 ## 7. Ready-to-file issues
 
