@@ -1,14 +1,13 @@
 # Enterprise-readiness gap matrix
 
-**Status**: Internal strategy
+**Status**: Roadmap / capability status (working doc)
 **Date**: 2026-06-11
-**Companion**: [Positioning & GTM critique](positioning.md)
 
-> An honest, capability-by-capability status of what "enterprise-ready" requires vs. what
-> exists, with evidence. Its purpose is to **keep the positioning claim and the product in
-> sync** and to set priorities for a Phase-3 plan that does not yet exist (today Phase 3 lives
-> only as "non-goals" in the [Phase 2 plan](../plans/phase-2-implementation.md) and a rollout
-> bullet in the [Phase 1 plan](../plans/phase-1-implementation.md)).
+> An honest, capability-by-capability status of what enterprise deployment requires vs. what
+> exists today, with evidence — and a prioritized road to close the gaps. It seeds a Phase-3
+> plan that does not yet exist (today Phase 3 lives only as "non-goals" in the
+> [Phase 2 plan](../plans/phase-2-implementation.md) and a rollout bullet in the
+> [Phase 1 plan](../plans/phase-1-implementation.md)).
 
 Status legend: **Built** (implemented + tested) · **Partial** · **Specced** (design only) ·
 **Not started**.
@@ -81,26 +80,25 @@ SBOM / vuln* layer that procurement increasingly checks is unbuilt.
 
 ## Road to enterprise-ready (priority)
 
-This is effectively the **seed of a Phase-3 plan**. Ordered to back the positioning claim
-fastest, then clear the first real POC, then satisfy procurement.
+This is effectively the **seed of a Phase-3 plan**. Ordered: in-our-control, demoable wins
+first; then first-deployment table-stakes; then compliance.
 
-**Tier 0 — proof points (back the claim now; in-our-control, demoable):**
+**Tier 0 — demoable, in-our-control:**
 1. Air-gap **bundle export** (`gearbox export`) — §5.
 2. **Audit / event log** — §4.
 3. **Managed-mode policy** (allow-only-approved-stores, enforced pins) — §3.
 
-**Tier 1 — first enterprise POC table-stakes:**
+**Tier 1 — first-deployment table-stakes:**
 4. **mTLS / cloud-IAM** private-store auth — §2.
 5. **RBAC** for publish / approve / install + approval workflow — §2/§3.
 6. **Key rotation overlap + revocation** — §4.
 7. Install-time **permission consent + diff** — §3.
 
-**Tier 2 — procurement & compliance:**
+**Tier 2 — compliance:**
 8. **SBOM + provenance attestations** (SLSA) — §1.
 9. **Vulnerability / advisory feed** — §1.
 10. **SSO/OIDC** for the console — §2.
 11. **SOC2** path (once a managed control plane exists) — §4.
 
-**Implication for positioning:** until Tier 0 exists, lead with the **supply-chain-security**
-story (§1, the genuinely strong column) and call everything else *roadmap*. "Enterprise-ready"
-is honestly a Tier-1-complete claim — not today's.
+**Status read:** supply-chain security (§1) is the only fully-built domain today; everything
+else is **roadmap**. "Enterprise-ready" is honestly a Tier-1-complete bar — not today's.
