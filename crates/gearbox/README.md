@@ -1,40 +1,47 @@
 # gearbox (Rust) — native cog-store reference
 
-Native Rust implementation of the cog-store protocol (gearbox#3). **Phase-1 scope:
-catalog signature verification** — JCS (RFC 8785) + Ed25519 — the same algorithm the
-device-side verifier (`cognitum-one/seed` B4) needs, proven against the frozen test vector
-in [`../../docs/protocol/testvectors/`](../../docs/protocol/testvectors/).
+Native Rust implementation of the cog-store protocol (gearbox#3): catalog **generation**,
+**signing**, and **verification** — JCS (RFC 8785) + Ed25519 — matching the Python `tools/`
+reference and pinned to the frozen test vector in
+[`../../docs/protocol/testvectors/`](../../docs/protocol/testvectors/).
 
 ## Build / test / run
 
 ```bash
-cargo test                                  # 5 conformance tests vs the test vector
-cargo run -- verify <catalog.json> --key-id <ID> --pubkey-b64 <B64>
+cargo test                                   # 7 tests (jcs/verify conformance + catalog gen)
+
+gearbox catalog --cogs-dir DIR (--artifacts-dir DIR | --manifests-only) \
+                --store-id ID --generated-at TS --out FILE [--sign-seed-hex HEX --key-id ID]
+gearbox sign    --in FILE --out FILE --sign-seed-hex HEX --key-id ID
+gearbox verify  <catalog.json> --key-id ID --pubkey-b64 B64
 ```
 
 ## Layout
 
 ```
 src/jcs.rs       RFC 8785 canonicalization (ASCII+integer subset; matches the vector)
-src/signing.rs   Ed25519 verify over JCS bytes (protocol §7)
-src/main.rs      `gearbox verify` CLI
-tests/vector.rs  byte-for-byte conformance + verify / tamper / untrusted-key / wrong-alg
+src/signing.rs   Ed25519 sign + verify over JCS bytes (protocol §7)
+src/catalog.rs   build + validate app-registry.json from a cog.toml tree (protocol §3)
+src/main.rs      `gearbox` CLI: catalog / sign / verify
+tests/           vector.rs (verify conformance) · catalog.rs (generate / validate / sign)
 ```
 
-## Conformance (the point of this crate)
+## Conformance & cross-implementation parity
 
-`tests/vector.rs::jcs_reproduces_frozen_canonical_bytes` asserts the Rust JCS output equals
-`catalog.canonical.json` **byte-for-byte** — the cross-language gate between this crate, the
-Python signer (`tools/`), and the seed verifier (B4). If any of them drifts, it fails. This
-is the concrete evidence that a Rust verifier built to seed B4 will interoperate with the
-A4 signer.
+- `tests/vector.rs::jcs_reproduces_frozen_canonical_bytes` — the Rust JCS output equals
+  `catalog.canonical.json` **byte-for-byte**.
+- **Cross-impl parity**: the Rust and Python generators produce **byte-identical
+  signatures** for the same inputs (checked in full + manifests-only modes), proving their
+  JCS canonical bytes agree. Three implementations — the Python signer/verifier (`tools/`)
+  and this Rust crate — all reproduce the frozen vector. A Rust verifier built to seed B4
+  interoperates with the A4 signer by construction.
 
-Why a hand-rolled JCS instead of a crate: catalogs are restricted to the ASCII + integer
-subset (protocol §7.1), so the in-tree canonicalizer is small, dependency-free, and
-**gated by the vector** — the same approach as the Python reference.
+Why a hand-rolled JCS instead of a crate: catalogs are the ASCII + integer subset (protocol
+§7.1), so the in-tree canonicalizer is small, dependency-free, and gated by the vector +
+parity.
 
-## Scope / next
+## Scope
 
-Verify only, for now. Next slices toward Python-tools parity: `gearbox catalog` (generate)
-and `gearbox sign`. Dependencies are intentionally minimal — `serde_json`,
-`ed25519-dalek`, `base64`; no JCS crate, no `clap` (hand-rolled arg parsing).
+Full parity with the Python tools (generate / sign / verify). Next (Phase 2+): a reference
+store server; multi-store. Dependencies: `serde_json`, `ed25519-dalek`, `base64`, `toml`,
+`sha2`, `hex` (no `clap` — hand-rolled arg parsing).

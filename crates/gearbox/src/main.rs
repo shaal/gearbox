@@ -1,78 +1,216 @@
 //! `gearbox` CLI — native reference for the cog-store protocol.
 //!
-//! Phase-1 subcommand: `verify` (the seed B4 / A4-pre-upload check). Catalog generation +
-//! signing parity with the Python `tools/` is the next slice.
+//! Subcommands:
+//!   verify   <catalog.json> --key-id <ID> --pubkey-b64 <B64>
+//!   catalog  --cogs-dir DIR (--artifacts-dir DIR | --manifests-only) --store-id ID
+//!            --generated-at TS --out FILE [--sign-seed-hex HEX --key-id ID]
+//!   sign     --in FILE --out FILE --sign-seed-hex HEX --key-id ID
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::path::Path;
 use std::process::exit;
 
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde_json::Value;
 
-use gearbox::signing;
+use gearbox::{catalog, signing};
 
-const USAGE: &str = "usage: gearbox verify <catalog.json> --key-id <ID> --pubkey-b64 <B64>";
+const USAGE: &str = "\
+usage:
+  gearbox verify  <catalog.json> --key-id <ID> --pubkey-b64 <B64>
+  gearbox catalog --cogs-dir DIR (--artifacts-dir DIR | --manifests-only) \\
+                  --store-id ID --generated-at TS --out FILE [--sign-seed-hex HEX --key-id ID]
+  gearbox sign    --in FILE --out FILE --sign-seed-hex HEX --key-id ID";
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    match args.get(1).map(String::as_str) {
-        Some("verify") => exit(cmd_verify(&args[2..])),
+    let code = match args.get(1).map(String::as_str) {
+        Some("verify") => cmd_verify(&args[2..]),
+        Some("catalog") => cmd_catalog(&args[2..]),
+        Some("sign") => cmd_sign(&args[2..]),
         _ => {
             eprintln!("{USAGE}");
-            exit(2);
+            2
+        }
+    };
+    exit(code);
+}
+
+/// Split args into `(--key value)` pairs, boolean flags, and positionals.
+fn parse_flags(
+    args: &[String], bool_flags: &[&str],
+) -> Result<(HashMap<String, String>, HashSet<String>, Vec<String>), String> {
+    let mut kv = HashMap::new();
+    let mut flags = HashSet::new();
+    let mut pos = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        let a = &args[i];
+        if a.starts_with("--") {
+            if bool_flags.contains(&a.as_str()) {
+                flags.insert(a.clone());
+                i += 1;
+            } else {
+                let v = args.get(i + 1).ok_or_else(|| format!("{a} needs a value"))?;
+                kv.insert(a.clone(), v.clone());
+                i += 2;
+            }
+        } else {
+            pos.push(a.clone());
+            i += 1;
+        }
+    }
+    Ok((kv, flags, pos))
+}
+
+fn read_json(path: &str) -> Result<Value, String> {
+    let bytes = fs::read(path).map_err(|e| format!("read {path}: {e}"))?;
+    serde_json::from_slice(&bytes).map_err(|e| format!("parse {path}: {e}"))
+}
+
+fn decode_seed(h: &str) -> Result<[u8; 32], String> {
+    let v = hex::decode(h.trim()).map_err(|e| format!("--sign-seed-hex not hex: {e}"))?;
+    v.try_into().map_err(|_| "--sign-seed-hex must decode to 32 bytes".to_string())
+}
+
+fn maybe_sign(catalog: Value, kv: &HashMap<String, String>) -> Result<(Value, bool), String> {
+    match (kv.get("--sign-seed-hex"), kv.get("--key-id")) {
+        (None, _) => Ok((catalog, false)),
+        (Some(_), None) => Err("--key-id is required when --sign-seed-hex is given".into()),
+        (Some(seed_hex), Some(key_id)) => {
+            let seed = decode_seed(seed_hex)?;
+            Ok((signing::sign_catalog(&catalog, &seed, key_id)?, true))
         }
     }
 }
 
+fn write_json(path: &str, value: &Value) -> Result<(), String> {
+    let pretty = serde_json::to_string_pretty(value).map_err(|e| e.to_string())?;
+    fs::write(path, pretty + "\n").map_err(|e| format!("write {path}: {e}"))
+}
+
 fn cmd_verify(args: &[String]) -> i32 {
-    let mut path: Option<String> = None;
-    let mut key_id: Option<String> = None;
-    let mut pubkey_b64: Option<String> = None;
-
-    let mut it = args.iter();
-    while let Some(a) = it.next() {
-        match a.as_str() {
-            "--key-id" => key_id = it.next().cloned(),
-            "--pubkey-b64" => pubkey_b64 = it.next().cloned(),
-            p if !p.starts_with("--") => path = Some(p.to_string()),
-            other => {
-                eprintln!("unknown argument {other:?}\n{USAGE}");
-                return 2;
-            }
+    let (kv, _, pos) = match parse_flags(args, &[]) {
+        Ok(x) => x,
+        Err(e) => {
+            eprintln!("{e}\n{USAGE}");
+            return 2;
         }
-    }
-
-    let (Some(path), Some(key_id), Some(pubkey_b64)) = (path, key_id, pubkey_b64) else {
+    };
+    let (Some(path), Some(key_id), Some(pubkey_b64)) =
+        (pos.first(), kv.get("--key-id"), kv.get("--pubkey-b64"))
+    else {
         eprintln!("{USAGE}");
         return 2;
     };
-
-    let catalog: Value = match fs::read(&path)
-        .map_err(|e| e.to_string())
-        .and_then(|b| serde_json::from_slice(&b).map_err(|e| e.to_string()))
-    {
+    let catalog = match read_json(path) {
         Ok(v) => v,
         Err(e) => {
-            eprintln!("FAIL: read/parse {path}: {e}");
+            eprintln!("FAIL: {e}");
             return 1;
         }
     };
-
-    let pk: [u8; 32] = match STANDARD.decode(&pubkey_b64).ok().and_then(|v| v.try_into().ok()) {
+    let pk: [u8; 32] = match STANDARD.decode(pubkey_b64).ok().and_then(|v| v.try_into().ok()) {
         Some(a) => a,
         None => {
             eprintln!("FAIL: --pubkey-b64 must be base64 of exactly 32 bytes");
             return 2;
         }
     };
-
-    let mut trust: HashMap<String, [u8; 32]> = HashMap::new();
-    trust.insert(key_id, pk);
-
+    let trust = HashMap::from([(key_id.clone(), pk)]);
     match signing::verify_catalog(&catalog, &trust) {
         Ok(kid) => {
             println!("OK: catalog verified by {kid}");
+            0
+        }
+        Err(e) => {
+            eprintln!("FAIL: {e}");
+            1
+        }
+    }
+}
+
+fn cmd_catalog(args: &[String]) -> i32 {
+    let (kv, flags, _) = match parse_flags(args, &["--manifests-only"]) {
+        Ok(x) => x,
+        Err(e) => {
+            eprintln!("{e}\n{USAGE}");
+            return 2;
+        }
+    };
+    let (Some(cogs_dir), Some(store_id), Some(generated_at), Some(out)) = (
+        kv.get("--cogs-dir"),
+        kv.get("--store-id"),
+        kv.get("--generated-at"),
+        kv.get("--out"),
+    ) else {
+        eprintln!("{USAGE}");
+        return 2;
+    };
+    let manifests_only = flags.contains("--manifests-only");
+    let artifacts_dir = kv.get("--artifacts-dir");
+    if !manifests_only && artifacts_dir.is_none() {
+        eprintln!("--artifacts-dir is required unless --manifests-only");
+        return 2;
+    }
+
+    let built = catalog::build_catalog(
+        Path::new(cogs_dir),
+        artifacts_dir.map(Path::new),
+        store_id,
+        generated_at,
+        manifests_only,
+    );
+    let catalog = match built {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("FAIL: {e}");
+            return 1;
+        }
+    };
+    let (catalog, signed) = match maybe_sign(catalog, &kv) {
+        Ok(x) => x,
+        Err(e) => {
+            eprintln!("{e}");
+            return 2;
+        }
+    };
+    if let Err(e) = write_json(out, &catalog) {
+        eprintln!("FAIL: {e}");
+        return 1;
+    }
+    let mode = if manifests_only { "manifests-only" } else { "full" };
+    let status = if signed { "signed" } else { "UNSIGNED" };
+    let n = catalog["cogs"].as_array().map_or(0, |a| a.len());
+    println!("wrote {out} — {n} cog(s), {mode}, {status}");
+    0
+}
+
+fn cmd_sign(args: &[String]) -> i32 {
+    let (kv, _, _) = match parse_flags(args, &[]) {
+        Ok(x) => x,
+        Err(e) => {
+            eprintln!("{e}\n{USAGE}");
+            return 2;
+        }
+    };
+    let (Some(inp), Some(out), Some(seed_hex), Some(key_id)) = (
+        kv.get("--in"),
+        kv.get("--out"),
+        kv.get("--sign-seed-hex"),
+        kv.get("--key-id"),
+    ) else {
+        eprintln!("{USAGE}");
+        return 2;
+    };
+    let result = read_json(inp)
+        .and_then(|c| decode_seed(seed_hex).map(|s| (c, s)))
+        .and_then(|(c, s)| signing::sign_catalog(&c, &s, key_id))
+        .and_then(|signed| write_json(out, &signed));
+    match result {
+        Ok(()) => {
+            println!("OK: signed {out} ({key_id})");
             0
         }
         Err(e) => {

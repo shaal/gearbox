@@ -6,5 +6,6 @@
 //! Phase-1 scope: catalog signature **verification** (the B4-critical path). Catalog
 //! generation + signing parity with the Python tools is the next slice.
 
+pub mod catalog;
 pub mod jcs;
 pub mod signing;

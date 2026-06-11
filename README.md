@@ -77,12 +77,12 @@ docs/
   research/   cog-store-enhancements.md         # forward-looking feature research / roadmap
 tools/                                          # Python reference catalog generator + signer (gearbox#2)
   catalog_gen.py · verify_catalog.py · cogstore/ · testdata/ · selftest.sh
-crates/gearbox/                                 # native Rust reference (gearbox#3)
-  src/ (jcs, signing, verify CLI) · tests/vector.rs — byte-for-byte vs the test vector
+crates/gearbox/                                 # native Rust reference (gearbox#3): generate / sign / verify
+  src/ (jcs · signing · catalog · CLI) · tests/ — byte-for-byte vs the vector + Python parity
 ```
 
-Planned: `gearbox catalog`/`sign` parity in the Rust crate; a reference store server; the
-device-side verifier in `cognitum-one/seed` (B4, specced in `docs/cross-repo/`).
+Planned: a reference store server; multi-store (Phase 2). The device-side verifier lives in
+`cognitum-one/seed` (B4, specced in `docs/cross-repo/`).
 
 ## Relationship to the rest of Cognitum
 
