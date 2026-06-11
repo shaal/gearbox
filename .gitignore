@@ -3,6 +3,11 @@
 **/*.rs.bk
 Cargo.lock
 
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
 # Signing keys / secrets — never commit
 *.key
 *.pem
