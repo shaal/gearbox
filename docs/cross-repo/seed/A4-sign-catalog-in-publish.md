@@ -3,7 +3,7 @@
 **Status**: Drafted (ready to apply as a `cognitum-one/seed` PR)
 **Target repo**: `cognitum-one/seed` (publish/release workflow) — see note
 **Workstream**: Phase 1 / A4 — **critical path** (producer half of the A4 ↔ B4 handshake)
-**Depends on**: #1 signing format (done), #2 catalog generator (done)
+**Depends on**: #1 signing format (done); the `gearbox` catalog tool — Rust (#3, done) is canonical, Python (#2) is an optional cross-check
 **Pins**: [protocol §7](../../protocol/cog-store-protocol.md#7-signing) + [`testvectors/`](../../protocol/testvectors/)
 
 > **Location note.** The workflow that builds the `-arm` binaries and uploads artifacts +
@@ -18,26 +18,38 @@ At publish time, generate the official `app-registry.json` with the Gearbox gene
 halves of the signing handshake; both are pinned to the **same frozen test vector**, so a
 signer built to A4 and a verifier built to B4 interoperate by construction.
 
+## Implementation note (Rust is canonical)
+
+Per the [Phase 2 plan §11](../../plans/phase-2-implementation.md), the **Rust `gearbox`
+binary** is the canonical implementation of generate/sign/verify. `seed` is already a Rust
+workspace, so `cargo` is present — no Python/`pip` step. The Python `tools/` produce
+byte-identical output (parity-proven) and remain available only as a cross-check oracle.
+
 ## Pipeline steps
 
 After the `-arm` binaries + assets are staged under `cogs/<arch>/…` (existing build):
 
-1. **Obtain the generator** — check out Gearbox at a pinned tag/commit; ensure Python ≥ 3.11
-   + `cryptography`.
+1. **Build the tool** — check out Gearbox at a pinned tag/commit and
+   `cargo build --release --manifest-path gearbox/crates/gearbox/Cargo.toml`.
 2. **Generate + sign**:
    ```bash
-   python3 gearbox/tools/catalog_gen.py \
-     --cogs-dir cogs/src/cogs \
-     --artifacts-dir "$STAGING" \
+   GB=gearbox/crates/gearbox/target/release/gearbox
+   "$GB" catalog \
+     --cogs-dir cogs/src/cogs --artifacts-dir "$STAGING" \
      --store-id cognitum-official \
      --generated-at "$(git -C cogs show -s --format=%cI HEAD)" \
      --out app-registry.json \
      --sign-seed-hex "$STORE_SIGNING_KEY" --key-id cognitum-release-2026
    ```
-3. **Verify before upload** — verify `app-registry.json` against the embedded official
-   public key; **fail the job on mismatch** (catches a key/format error before it ships).
+3. **Verify before upload** — fail the job on mismatch:
+   ```bash
+   "$GB" verify app-registry.json --key-id cognitum-release-2026 --pubkey-b64 "$OFFICIAL_PUBKEY_B64"
+   ```
 4. **Upload** `app-registry.json` to the location the official store's `catalog_url` points
    at.
+
+`OFFICIAL_PUBKEY_B64` is the official release **public** key (a known constant, not a
+secret) — the same key embedded in the Seed (B4).
 
 ## Determinism (a property worth keeping)
 
@@ -57,25 +69,24 @@ to rotate, publish under a new `key_id` while Seeds trust both during the overla
 ```yaml
       - uses: actions/checkout@v4
         with: { repository: <org>/gearbox, ref: <pinned-tag>, path: gearbox }
-      - run: pip install cryptography
+      - run: cargo build --release --manifest-path gearbox/crates/gearbox/Cargo.toml
       - name: Generate + sign catalog
-        env: { STORE_SIGNING_KEY: ${{ secrets.STORE_SIGNING_KEY }} }
+        env:
+          STORE_SIGNING_KEY: ${{ secrets.STORE_SIGNING_KEY }}
+          GB: gearbox/crates/gearbox/target/release/gearbox
         run: |
-          python3 gearbox/tools/catalog_gen.py \
-            --cogs-dir cogs/src/cogs --artifacts-dir "$STAGING" \
+          "$GB" catalog --cogs-dir cogs/src/cogs --artifacts-dir "$STAGING" \
             --store-id cognitum-official \
             --generated-at "$(git -C cogs show -s --format=%cI HEAD)" \
             --out app-registry.json \
             --sign-seed-hex "$STORE_SIGNING_KEY" --key-id cognitum-release-2026
       - name: Verify before upload
-        run: python3 gearbox/tools/verify_catalog.py app-registry.json   # see note
+        run: |
+          gearbox/crates/gearbox/target/release/gearbox verify app-registry.json \
+            --key-id cognitum-release-2026 --pubkey-b64 "$OFFICIAL_PUBKEY_B64"
       - name: Upload
         run: gsutil cp app-registry.json gs://cognitum-apps/cogs/app-registry.json
 ```
-
-> `verify_catalog.py` is a small Phase-1 helper to add to Gearbox `tools/` — a thin wrapper
-> over `cogstore.signing.verify_catalog` with the official public key. Tiny gearbox-native
-> task.
 
 ## Failure handling
 

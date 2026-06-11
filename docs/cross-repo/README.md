@@ -37,9 +37,14 @@ See the [Phase 1 plan](../plans/phase-1-implementation.md) and
 [epic #4](https://github.com/shaal/gearbox/issues/4). Critical path:
 signing format (#1) → sign (A4) + verify (B4). A1 is independent and unblocks A3 + B5.
 
-> **Gearbox follow-ups (now implemented in `tools/`, verified by `tools/selftest.sh`):**
-> 1. **`--manifests-only` mode** — the cogs A3 PR-time gate, building the catalog before any
->    `-arm` binary exists. See [cogs/A3](cogs/A3-catalog-ci-gate.md).
+> **Gearbox follow-ups — implemented in both `crates/gearbox` (Rust, canonical) and `tools/`
+> (Python, cross-check oracle). A3/A4 use the Rust binary (cogs/seed are already Rust
+> workspaces, so `cargo` is present and no Python is needed):**
+> 1. **`catalog --manifests-only`** — the cogs A3 PR-time gate, building the catalog before
+>    any `-arm` binary exists. See [cogs/A3](cogs/A3-catalog-ci-gate.md).
 > 2. **Enriched `artifacts.assets[]`** (`filename` + optional `required_when`) so the install
 >    record is self-contained. See [seed/B5](seed/B5-install-via-path.md).
-> 3. **`verify_catalog.py`** — the A4 verify-before-upload helper. See [seed/A4](seed/A4-sign-catalog-in-publish.md).
+> 3. **`gearbox verify`** (and `tools/verify_catalog.py`) — the A4 verify-before-upload step.
+>    See [seed/A4](seed/A4-sign-catalog-in-publish.md).
+>
+> Implementation-language decision recorded in the [Phase 2 plan §11](../plans/phase-2-implementation.md).
