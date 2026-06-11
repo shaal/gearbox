@@ -1,0 +1,16 @@
+[package]
+name = "gearbox"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "Native Rust reference for the cog-store protocol (JCS + Ed25519 verify)."
+license = "MIT"
+
+[dependencies]
+serde_json = "1"
+ed25519-dalek = "2"
+base64 = "0.22"
+
+[[bin]]
+name = "gearbox"
+path = "src/main.rs"

@@ -76,11 +76,13 @@ docs/
               testvectors/                      # executable signing contract (gearbox#1)
   research/   cog-store-enhancements.md         # forward-looking feature research / roadmap
 tools/                                          # Python reference catalog generator + signer (gearbox#2)
-  catalog_gen.py · cogstore/ · testdata/ · selftest.sh
+  catalog_gen.py · verify_catalog.py · cogstore/ · testdata/ · selftest.sh
+crates/gearbox/                                 # native Rust reference (gearbox#3)
+  src/ (jcs, signing, verify CLI) · tests/vector.rs — byte-for-byte vs the test vector
 ```
 
-Planned (not yet built): `crates/` — the native Rust `gearbox` CLI and a reference store
-server (gearbox#3), plus the device-side verifier in `cognitum-one/seed`.
+Planned: `gearbox catalog`/`sign` parity in the Rust crate; a reference store server; the
+device-side verifier in `cognitum-one/seed` (B4, specced in `docs/cross-repo/`).
 
 ## Relationship to the rest of Cognitum
 
