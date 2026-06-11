@@ -18,7 +18,7 @@ The two **Gearbox-native** pieces are real here, not staged: the signing contrac
 | B1 | seed | `StoreDescriptor` config; remove the hardcoded base | Outline — [seed/B1](seed/B1-store-descriptor-config.md) |
 | B2 | seed | `Fetcher` trait (`gs://`, `https://`) | Outline — [seed/B2](seed/B2-fetcher-trait.md) |
 | B3 | seed | Load the catalog from `catalog_url` | Outline — [seed/B3](seed/B3-catalog-loader.md) |
-| B4 | seed | Verify the catalog signature; fail closed | Outline — [seed/B4](seed/B4-verify-signature.md) |
+| B4 | seed | Verify the catalog signature; fail closed | **Drafted** — [seed/B4](seed/B4-verify-signature.md) |
 | B5 | seed | Resolve `path`; sha256 vs the signed manifest | Outline — [seed/B5](seed/B5-install-via-path.md) |
 | B6 | seed | `require_signed_catalog` transition flag | Outline — [seed/B6](seed/B6-transition-flag.md) |
 
