@@ -6,18 +6,20 @@ CI invokes as a publish step. See ../docs/protocol/cog-store-protocol.md. The ev
 native Rust `gearbox` CLI is gearbox#3; both implement the same protocol and are pinned
 by the test vector in ../docs/protocol/testvectors/.
 
-Example:
+Modes:
+  publish        --artifacts-dir <staged>   binary hashed from the built artifact
+  manifests-only --manifests-only           no built binary yet (cogs PR-time gate, A3);
+                                            binary entry is {path, pending: true}
+
+Example (publish + sign):
   python3 catalog_gen.py \\
-      --cogs-dir ../../cogs/src/cogs \\
-      --artifacts-dir dist \\
-      --store-id cognitum-official \\
-      --generated-at 2026-06-10T00:00:00Z \\
+      --cogs-dir ../../cogs/src/cogs --artifacts-dir dist \\
+      --store-id cognitum-official --generated-at 2026-06-10T00:00:00Z \\
       --out app-registry.json \\
       --sign-seed-hex "$(cat "$STORE_SIGNING_KEY")" --key-id cognitum-release-2026
 
-The signing seed is a 32-byte Ed25519 seed in hex. In CI it comes from the
-STORE_SIGNING_KEY secret and is never committed. Omit --sign-seed-hex to emit an
-unsigned catalog (e.g. for a preview/staging channel).
+The signing seed is a 32-byte Ed25519 seed in hex; in CI it is the STORE_SIGNING_KEY
+secret and is never committed. Omit --sign-seed-hex to emit an unsigned catalog.
 """
 import argparse
 import json
@@ -35,8 +37,11 @@ def main(argv=None) -> int:
         description="Generate a cog-store catalog (app-registry.json).")
     ap.add_argument("--cogs-dir", required=True,
                     help="tree of <cog>/cog.toml manifests (e.g. cogs/src/cogs)")
-    ap.add_argument("--artifacts-dir", required=True,
-                    help="staging dir holding built binaries at cogs/<arch>/<binary>")
+    ap.add_argument("--artifacts-dir",
+                    help="staging dir holding built binaries at cogs/<arch>/<binary> "
+                         "(required unless --manifests-only)")
+    ap.add_argument("--manifests-only", action="store_true",
+                    help="build from manifests without a built binary (binary -> pending)")
     ap.add_argument("--store-id", required=True)
     ap.add_argument("--generated-at", required=True,
                     help="RFC3339 timestamp; pass it in so catalogs stay reproducible")
@@ -46,9 +51,13 @@ def main(argv=None) -> int:
     ap.add_argument("--key-id", help="key_id for the signature (required with --sign-seed-hex)")
     args = ap.parse_args(argv)
 
+    if not args.manifests_only and not args.artifacts_dir:
+        ap.error("--artifacts-dir is required unless --manifests-only is given")
+
     catalog = cat.build_catalog(
         args.cogs_dir, args.artifacts_dir,
-        store_id=args.store_id, generated_at=args.generated_at)
+        store_id=args.store_id, generated_at=args.generated_at,
+        manifests_only=args.manifests_only)
 
     signed = False
     if args.sign_seed_hex:
@@ -62,8 +71,9 @@ def main(argv=None) -> int:
 
     out = pathlib.Path(args.out)
     out.write_text(json.dumps(catalog, indent=2) + "\n")
+    mode = "manifests-only" if args.manifests_only else "full"
     status = f"signed ({args.key_id})" if signed else "UNSIGNED"
-    print(f"wrote {out} — {len(catalog['cogs'])} cog(s), {status}")
+    print(f"wrote {out} — {len(catalog['cogs'])} cog(s), {mode}, {status}")
     return 0
 
 

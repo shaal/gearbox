@@ -54,7 +54,7 @@ A signed, portable JSON document. Artifact references are **relative** to the st
             "binary": { "path": "cogs/arm/cog-doom-arm", "sha256": "…", "size": 1234567 },
             "assets": [
               { "id": "freedoom1-wad", "path": "cogs/arm/wads/freedoom1.wad",
-                "sha256": "7323bcc1…", "size": 28795076 }
+                "filename": "freedoom1.wad", "sha256": "7323bcc1…", "size": 28795076 }
             ]
           }
         }
@@ -75,6 +75,11 @@ Per-version signatures are permitted as an alternative to a single catalog signa
 The catalog's `manifest` is the cog's `cog.toml` normalized to JSON. The one addition on
 the cog side is a scheme-agnostic relative `path` in `[[assets]]`; `gcs_path` remains a
 back-compat alias meaning "relative to the official GCS base." See [the plan](../plans/pluggable-cog-stores.md) §4.2.
+
+Each `artifacts.assets[]` entry is **self-contained for install**: alongside `path` /
+`sha256` / `size` it carries the manifest's `filename` (the on-device destination) and any
+`required_when` (conditional install), so the Seed need not cross-reference the embedded
+`manifest` by `id`.
 
 ## 4. Install algorithm (Seed-side)
 

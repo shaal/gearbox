@@ -37,9 +37,9 @@ See the [Phase 1 plan](../plans/phase-1-implementation.md) and
 [epic #4](https://github.com/shaal/gearbox/issues/4). Critical path:
 signing format (#1) → sign (A4) + verify (B4). A1 is independent and unblocks A3 + B5.
 
-> **Gearbox follow-ups surfaced while drafting** (both small additions to `tools/`, after #2):
-> 1. **`--manifests-only` mode** — for the cogs A3 PR-time gate, which builds the catalog
->    before any `-arm` binary exists (skip binary hashing). See [cogs/A3](cogs/A3-catalog-ci-gate.md).
-> 2. **Enrich `artifacts.assets[]`** with `filename` (and `required_when`) so the install
->    record is self-contained, instead of making the Seed join by `id` against the embedded
->    manifest. See [seed/B5](seed/B5-install-via-path.md).
+> **Gearbox follow-ups (now implemented in `tools/`, verified by `tools/selftest.sh`):**
+> 1. **`--manifests-only` mode** — the cogs A3 PR-time gate, building the catalog before any
+>    `-arm` binary exists. See [cogs/A3](cogs/A3-catalog-ci-gate.md).
+> 2. **Enriched `artifacts.assets[]`** (`filename` + optional `required_when`) so the install
+>    record is self-contained. See [seed/B5](seed/B5-install-via-path.md).
+> 3. **`verify_catalog.py`** — the A4 verify-before-upload helper. See [seed/A4](seed/A4-sign-catalog-in-publish.md).

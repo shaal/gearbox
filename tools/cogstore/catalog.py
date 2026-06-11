@@ -4,6 +4,15 @@ Artifact path model (Phase 1): a cog's binary and assets live under `cogs/<arch>
 in the store, where `<arch>` is the trailing segment of the binary name
 (`cog-<name>-<arch>`). Asset sha256/size come from the manifest (the source of truth that
 cogs CI's asset-sha256 gate enforces); the binary is hashed from the staged build.
+
+Two modes:
+- normal: the binary is hashed from `--artifacts-dir` (publish).
+- `manifests_only=True`: no built binary exists yet (cogs PR-time gate, A3) — the binary
+  entry is `{path, pending: true}` and only manifest-derived fields + asset hashes are
+  validated.
+
+Asset entries are self-contained for install (B5): they carry `filename` and any
+`required_when` from the manifest, not just `{id, path, sha256, size}`.
 """
 import datetime
 import hashlib
@@ -40,46 +49,57 @@ def _sha256_file(p: pathlib.Path):
     return h.hexdigest(), p.stat().st_size
 
 
-def build_cog_version(cog_dir: pathlib.Path, artifacts_dir: pathlib.Path) -> dict:
+def asset_entry(a: dict, arch: str) -> dict:
+    """Catalog artifact entry for a manifest `[[assets]]` block — self-contained for install.
+
+    Carries `filename` (the local destination, B5) and any `required_when` (conditional
+    install, B5), so the Seed needn't cross-reference the embedded manifest by id.
+    """
+    rel = a.get("path") or a["gcs_path"]          # A1 forward-compat: prefer `path`, else `gcs_path`
+    entry = {
+        "id": a["id"],
+        "path": f"cogs/{arch}/{rel}",
+        "filename": a["filename"],                # local destination (B5)
+        "sha256": a["sha256"],                    # manifest = source of truth (CI-gated)
+        "size": int(a["size_bytes"]),
+    }
+    if "required_when" in a:
+        entry["required_when"] = a["required_when"]
+    return entry
+
+
+def build_cog_version(cog_dir: pathlib.Path, artifacts_dir, *, manifests_only: bool = False) -> dict:
     manifest = _jsonable(tomllib.loads((cog_dir / "cog.toml").read_text()))
     cog = manifest["cog"]
     binary = cog["binary"]
     arch = arch_of(binary)
-
     bin_rel = f"cogs/{arch}/{binary}"
-    bin_file = artifacts_dir / bin_rel
-    if not bin_file.is_file():
-        raise FileNotFoundError(
-            f"binary artifact missing: {bin_file} "
-            f"(stage the built {binary} under --artifacts-dir at {bin_rel})")
-    bsha, bsize = _sha256_file(bin_file)
 
-    assets = []
-    for a in manifest.get("assets", []):
-        rel = a.get("path") or a["gcs_path"]   # A1 forward-compat: prefer `path`, else `gcs_path`
-        assets.append({
-            "id": a["id"],
-            "path": f"cogs/{arch}/{rel}",
-            "sha256": a["sha256"],              # manifest is the source of truth (CI-gated)
-            "size": int(a["size_bytes"]),
-        })
+    if manifests_only:
+        binary_art = {"path": bin_rel, "pending": True}     # built + hashed later (A4 publish)
+    else:
+        bin_file = pathlib.Path(artifacts_dir) / bin_rel
+        if not bin_file.is_file():
+            raise FileNotFoundError(
+                f"binary artifact missing: {bin_file} "
+                f"(stage the built {binary} under --artifacts-dir, or use --manifests-only)")
+        bsha, bsize = _sha256_file(bin_file)
+        binary_art = {"path": bin_rel, "sha256": bsha, "size": bsize}
 
+    assets = [asset_entry(a, arch) for a in manifest.get("assets", [])]
     return {
         "version": cog["version"],
         "manifest": manifest,
-        "artifacts": {
-            "binary": {"path": bin_rel, "sha256": bsha, "size": bsize},
-            "assets": assets,
-        },
+        "artifacts": {"binary": binary_art, "assets": assets},
     }
 
 
-def build_catalog(cogs_dir, artifacts_dir, *, store_id: str, generated_at: str) -> dict:
+def build_catalog(cogs_dir, artifacts_dir, *, store_id: str, generated_at: str,
+                  manifests_only: bool = False) -> dict:
     cogs_dir = pathlib.Path(cogs_dir)
-    artifacts_dir = pathlib.Path(artifacts_dir)
     cogs = []
     for cog_dir in sorted(p for p in cogs_dir.iterdir() if (p / "cog.toml").is_file()):
-        ver = build_cog_version(cog_dir, artifacts_dir)
+        ver = build_cog_version(cog_dir, artifacts_dir, manifests_only=manifests_only)
         cogs.append({"id": ver["manifest"]["cog"]["id"], "versions": [ver]})
 
     catalog = {
@@ -114,13 +134,18 @@ def validate(catalog: dict) -> None:
             req(isinstance(v.get("version"), str), f"{cid}.version missing")
             req(isinstance(v.get("manifest"), dict), f"{cid}.manifest missing")
             arts = v.get("artifacts") or {}
-            _check_artifact(arts.get("binary"), f"{cid} binary")
+            _check_artifact(arts.get("binary"), f"{cid} binary", allow_pending=True)
             req(isinstance(arts.get("assets"), list), f"{cid} assets must be a list")
             for a in arts["assets"]:
                 _check_artifact(a, f"{cid} asset {a.get('id')!r}")
+                req(isinstance(a.get("filename"), str) and a["filename"],
+                    f"{cid} asset {a.get('id')!r}: filename missing")
+                rw = a.get("required_when")
+                req(rw is None or isinstance(rw, str),
+                    f"{cid} asset {a.get('id')!r}: required_when must be a string")
 
 
-def _check_artifact(a, where):
+def _check_artifact(a, where, allow_pending=False):
     def req(cond, msg):
         if not cond:
             raise ValueError(f"invalid catalog: {where}: {msg}")
@@ -129,6 +154,8 @@ def _check_artifact(a, where):
     p = a.get("path")
     req(isinstance(p, str) and p, "path missing")
     req("://" not in p and not p.startswith("/"), f"path must be relative, got {p!r}")
+    if allow_pending and a.get("pending") is True:
+        return                                              # binary not yet built/hashed
     s = a.get("sha256")
     req(isinstance(s, str) and len(s) == SHA256_HEX_LEN
         and all(ch in "0123456789abcdef" for ch in s),
