@@ -77,6 +77,8 @@ docs/
   protocol/   cog-store-protocol.md             # the store + catalog + signing contract
               testvectors/                      # executable signing contract (gearbox#1)
   research/   cog-store-enhancements.md         # forward-looking feature research / roadmap
+  strategy/   positioning.md                    # internal: GTM critique (sovereign edge-AI distribution)
+              enterprise-readiness-matrix.md    # internal: honest capability-vs-expectation gap matrix
 tools/                                          # Python reference catalog generator + signer (gearbox#2)
   catalog_gen.py · verify_catalog.py · cogstore/ · testdata/ · selftest.sh
 crates/gearbox/                                 # native Rust reference (gearbox#3): catalog + store-info + serve
