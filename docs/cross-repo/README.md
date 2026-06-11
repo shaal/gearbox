@@ -16,10 +16,10 @@ The two **Gearbox-native** pieces are real here, not staged: the signing contrac
 | A3 | cogs | CI: catalog builds from manifests + hash gate | Outline — [cogs/A3](cogs/A3-catalog-ci-gate.md) |
 | A4 | seed ¹ | Sign the official catalog in the publish pipeline | Outline — [seed/A4](seed/A4-sign-catalog-in-publish.md) |
 | B1 | seed | `StoreDescriptor` config; remove the hardcoded base | **Drafted** — [seed/B1](seed/B1-store-descriptor-config.md) |
-| B2 | seed | `Fetcher` trait (`gs://`, `https://`) | Outline — [seed/B2](seed/B2-fetcher-trait.md) |
+| B2 | seed | `Fetcher` trait (`gs://`, `https://`) | **Drafted** — [seed/B2](seed/B2-fetcher-trait.md) |
 | B3 | seed | Load the catalog from `catalog_url` | Outline — [seed/B3](seed/B3-catalog-loader.md) |
 | B4 | seed | Verify the catalog signature; fail closed | **Drafted** — [seed/B4](seed/B4-verify-signature.md) |
-| B5 | seed | Resolve `path`; sha256 vs the signed manifest | Outline — [seed/B5](seed/B5-install-via-path.md) |
+| B5 | seed | Resolve `path`; sha256 vs the signed manifest | **Drafted** — [seed/B5](seed/B5-install-via-path.md) |
 | B6 | seed | `require_signed_catalog` transition flag | Outline — [seed/B6](seed/B6-transition-flag.md) |
 
 ¹ Plan §5.2 listed A4 under `cogs`, but the publish/upload workflow is **not** in the
@@ -37,7 +37,9 @@ See the [Phase 1 plan](../plans/phase-1-implementation.md) and
 [epic #4](https://github.com/shaal/gearbox/issues/4). Critical path:
 signing format (#1) → sign (A4) + verify (B4). A1 is independent and unblocks A3 + B5.
 
-> **Note — one new Gearbox follow-up surfaced:** A3 (a cogs CI gate that builds the
-> catalog from manifests at PR time, before any `-arm` binary exists) needs a
-> `--manifests-only` mode in the catalog generator (skip binary hashing). Small addition
-> to `tools/` — a follow-up to #2. Captured in [cogs/A3](cogs/A3-catalog-ci-gate.md).
+> **Gearbox follow-ups surfaced while drafting** (both small additions to `tools/`, after #2):
+> 1. **`--manifests-only` mode** — for the cogs A3 PR-time gate, which builds the catalog
+>    before any `-arm` binary exists (skip binary hashing). See [cogs/A3](cogs/A3-catalog-ci-gate.md).
+> 2. **Enrich `artifacts.assets[]`** with `filename` (and `required_when`) so the install
+>    record is self-contained, instead of making the Seed join by `id` against the embedded
+>    manifest. See [seed/B5](seed/B5-install-via-path.md).
