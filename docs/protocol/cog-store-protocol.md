@@ -65,9 +65,10 @@ A signed, portable JSON document. Artifact references are **relative** to the st
 }
 ```
 
-The `signature` covers the canonical serialization of everything above it
-(`schema_version` … `cogs`). Per-version signatures are permitted as an alternative to a
-single catalog signature (useful when multiple publishers share one store).
+The `signature` covers the **RFC 8785 (JCS) canonicalization of the catalog with its own
+`signature` member removed** — see §7 for the exact algorithm and a committed test vector.
+Per-version signatures are permitted as an alternative to a single catalog signature
+(useful when multiple publishers share one store).
 
 ### Relationship to `cog.toml`
 
@@ -80,7 +81,7 @@ back-compat alias meaning "relative to the official GCS base." See [the plan](..
 ```
 for each enabled store (by priority):
     catalog = fetch(store.catalog_url)            # with store.auth if present
-    verify_signature(catalog, against = store.trust)   # REJECT if unsigned/untrusted
+    verify_signature(catalog, against = store.trust)   # §7; REJECT if unsigned/untrusted
     resolve requested cog id (namespaced or by priority)
     for each artifact in the selected version:
         url   = join(store.artifact_base, artifact.path)
@@ -112,10 +113,73 @@ A device policy may:
 - pin specific cogs to specific stores,
 - require a minimum signing posture (e.g. provenance attestation present).
 
-## 7. Open items (v0 → v1)
+## 7. Signing
 
-- Canonical-JSON definition for signing (field ordering, number formatting).
+Catalogs are signed with **Ed25519** over the **RFC 8785 (JSON Canonicalization Scheme,
+JCS)** serialization of the catalog. A standard canonicalization is mandatory — it is the
+only way the signer (store) and the verifier (Seed) agree on bytes. **Do not hand-roll
+JSON canonicalization;** use a JCS implementation.
+
+### 7.1 What is signed
+
+1. Take the catalog object.
+2. Remove its top-level `signature` member (if present).
+3. Serialize the remainder with **RFC 8785 JCS** → the *signing input* (UTF-8 bytes).
+4. `sig = Ed25519(privkey, signing_input)`.
+
+The verifier reverses it: parse JSON → remove `signature` → JCS → verify `sig` against the
+trusted public key for `key_id`. Because the signing input is the catalog *minus* its own
+signature, a catalog can carry its signature inside the same document.
+
+JCS pins the parts that bite: object members sorted by UTF-16 code-unit order, no
+insignificant whitespace, minimal string escaping, and ECMAScript number formatting.
+**Guidance:** v0 catalogs SHOULD restrict numeric fields to integers (sizes, ports);
+floats invite JCS number-formatting subtleties — keep them out of the schema.
+
+### 7.2 Signature envelope
+
+```json
+"signature": {
+  "key_id": "cognitum-release-2026",
+  "alg": "ed25519",
+  "sig": "<base64 of the 64-byte Ed25519 signature>"
+}
+```
+
+- `key_id` — identifies the public key; **date-scoped** so rotation is additive (publish a
+  new key id, trust both during an overlap window, then retire the old one).
+- `alg` — `ed25519` (the only value in v0).
+- `sig` — standard base64 (RFC 4648 §4, padded) of the 64-byte signature.
+
+### 7.3 Keys, trust & fingerprints
+
+- Public keys are raw 32-byte Ed25519 keys. A store descriptor's `trust` lists the
+  `key_id`s a catalog from that store MUST be signed by.
+- **Fingerprint** (for the TOFU display in §5) = lowercase-hex SHA-256 of the raw 32-byte
+  public key.
+- Phase 1: the official store has exactly one trusted key, embedded in the Seed. Rotation
+  overlap and revocation lists are v1 (§8).
+
+### 7.4 Test vector (the contract is executable)
+
+A committed, runnable vector lives in [`testvectors/`](testvectors/):
+
+| file | what |
+|---|---|
+| `catalog.signed.json` | a sample catalog with a valid `signature` |
+| `catalog.canonical.json` | the exact JCS signing input (the bytes that were signed) |
+| `verify.py` | standalone verifier (stdlib + `cryptography`) |
+| `README.md` | the throwaway test keypair, canonical SHA-256, signature, and `python`/`openssl` verify recipes |
+
+It is cross-checked by two independent implementations (Python `cryptography` and
+OpenSSL). Implementers MUST reproduce the same canonical bytes and verify the same
+signature — if your canonicalizer's output differs from `catalog.canonical.json`
+byte-for-byte, your JCS is wrong.
+
+## 8. Open items (v0 → v1)
+
 - Key rotation: multiple valid keys per store during overlap; revocation list.
 - Whether to require a transparency-log inclusion proof for public stores.
 - `oci://` artifact layout (reuse OCI referrers for signatures/SBOM).
+- JCS number formatting, if non-integer numeric fields are ever introduced.
 - Versioning/upgrade semantics — see the enhancements research.

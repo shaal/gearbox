@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "store_id": "cognitum-official",
+  "generated_at": "2026-06-10T00:00:00Z",
+  "cogs": [
+    {
+      "id": "doom",
+      "versions": [
+        {
+          "version": "0.1.0",
+          "manifest": {
+            "cog": {
+              "id": "doom",
+              "name": "DOOM",
+              "version": "0.1.0",
+              "category": "games",
+              "binary": "cog-doom-arm",
+              "hardware_requirement": "pi-zero-2w"
+            },
+            "api": {
+              "bind_port": 8066,
+              "bind_loopback_only": true
+            }
+          },
+          "artifacts": {
+            "binary": {
+              "path": "cogs/arm/cog-doom-arm",
+              "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+              "size": 1234567
+            },
+            "assets": [
+              {
+                "id": "freedoom1-wad",
+                "path": "cogs/arm/wads/freedoom1.wad",
+                "sha256": "7323bcc168c5a45ff10749b339960e98314740a734c30d4b9f3337001f9e703d",
+                "size": 28795076
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "signature": {
+    "key_id": "gearbox-testvector-2026",
+    "alg": "ed25519",
+    "sig": "Q2VExF2MDkXRc1suwDBtbre/3c63wKeOec0WeX2RB8hzFUhftJXZJz8x/BWZxXkddT/1zMXA/dE/UqZPI/DfDw=="
+  }
+}
