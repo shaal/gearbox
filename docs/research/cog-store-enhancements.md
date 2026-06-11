@@ -3,7 +3,7 @@
 **Status**: Research
 **Date**: 2026-06-10
 **Scope**: Forward-looking features for the Cognitum cog store, beyond the multi-store
-foundation in [ADR-020](https://github.com/cognitum-one/cogs/blob/main/docs/adrs/ADR-020-alternative-cog-stores.md).
+foundation in [ADR-0001](../adr/ADR-0001-pluggable-cog-stores.md).
 
 > This document researches *how to make the cog store better* — not just "more stores,"
 > but a richer, safer, edge-aware distribution platform. It starts from an audit of what
@@ -24,7 +24,7 @@ the store is a thin, declarative layer. What exists vs. what's missing:
 | **Discovery** | `name`, `description`, `category` | No icons, screenshots, tags, search, ratings, collections, i18n |
 | **Dependencies** | None — ADR-001 deliberately rejects shared crates; cogs talk via RuVector | No capability/asset deps, no shared-asset dedup |
 | **CI / validation** | `manifest-validate`, `asset-sha256`, `adr-required` gates | No signing, license, or permission audit |
-| **Trust / permissions** | `[mesh] permissions`, `[api] auth` declared; sha256 only | No signing/provenance, no install-consent UX (ADR-020 proposes signing) |
+| **Trust / permissions** | `[mesh] permissions`, `[api] auth` declared; sha256 only | No signing/provenance, no install-consent UX (ADR-0001 proposes signing) |
 | **Compat / resources** | `hardware_requirement(s)`, `[resources] ram_mb/cpu_pct` | Single `-arm` artifact; no pre-flight fit check, no multi-arch select |
 | **Telemetry / health** | None | No `/health` contract, crash reports, or operator metrics |
 | **Licensing / pricing / i18n** | advisory `license` string | No SPDX validation, license policy, paid cogs, or localization |
@@ -88,9 +88,9 @@ Safe, non-lockstep composition:
 - **Soft hints**: "pairs well with" links, advisory only — no hard dependency graph to
   resolve, preserving independence. (M/C)
 
-### D. Trust, security & supply chain  ★ (extends ADR-020)
+### D. Trust, security & supply chain  ★ (extends ADR-0001)
 
-ADR-020 adds catalog signing. Build the rest of the supply chain on it:
+ADR-0001 adds catalog signing. Build the rest of the supply chain on it:
 
 - **Build provenance / attestations** (SLSA-style): catalog records *how* a binary was
   built (source commit, builder, toolchain). (C, CI, G)
@@ -157,7 +157,7 @@ Lower the cost of making and shipping a cog:
 
 Where bytes actually come from, optimized for fleets and bad networks:
 
-- **Pluggable backends** (`gs`/`s3`/`oci`/`https`/`file`) — the ADR-020 fetcher abstraction.
+- **Pluggable backends** (`gs`/`s3`/`oci`/`https`/`file`) — the ADR-0001 fetcher abstraction.
   `oci://` lets enterprises reuse Harbor/Artifactory/ECR. (S)
 - **LAN peer caching**: in a fleet, one Seed downloads a cog and **peers pull from it over
   the LAN** instead of each re-fetching from the cloud. Dramatic bandwidth savings for
@@ -189,7 +189,7 @@ value; "Effort" = rough build cost across cogs+Seed+Gearbox.
 | Enhancement | Theme | Impact | Effort | Notes |
 |---|---|---|---|---|
 | Atomic update + auto-rollback + health probe | A,F | ★★★★★ | M | Table-stakes for unattended edge; nothing else matters if updates brick devices |
-| Install/update **permission consent + diff** | D | ★★★★★ | M | Biggest safety win; depends on ADR-020 signing |
+| Install/update **permission consent + diff** | D | ★★★★★ | M | Biggest safety win; depends on ADR-0001 signing |
 | **Delta updates** + content-addressed dedup | A,H | ★★★★☆ | M | Edge bandwidth; compounding wins with shared assets |
 | Update channels + version ranges/pinning | A | ★★★★☆ | M | Foundation for staged rollout |
 | Multi-arch + **WASM-first** + pre-flight fit check | E | ★★★★☆ | M | Unblocks non-Pi Seeds; clean "won't fit" UX |
@@ -205,7 +205,7 @@ value; "Effort" = rough build cost across cogs+Seed+Gearbox.
 
 ## 4. Sequencing (suggested)
 
-1. **Foundation (with ADR-020):** signing + multi-store + the fetcher abstraction.
+1. **Foundation (with ADR-0001):** signing + multi-store + the fetcher abstraction.
 2. **Safe lifecycle:** atomic update + auto-rollback + health probe; channels + pinning;
    permission consent/diff. *(The "never brick a device, never silently gain power" tier.)*
 3. **Edge efficiency:** delta updates + content-addressed dedup + LAN peer caching; multi-arch

@@ -53,9 +53,9 @@ same cog can be served by any store. Ids are namespaced (`store-id/cog-id`) to r
 collisions, with priority + pinning + managed-mode allow/deny on top.
 
 Full design and rationale:
+- Decision record: [`docs/adr/ADR-0001-pluggable-cog-stores.md`](docs/adr/ADR-0001-pluggable-cog-stores.md)
+- Backing plan: [`docs/plans/pluggable-cog-stores.md`](docs/plans/pluggable-cog-stores.md)
 - Protocol spec: [`docs/protocol/cog-store-protocol.md`](docs/protocol/cog-store-protocol.md)
-- Decision record: [`cognitum-one/cogs` ADR-020](https://github.com/cognitum-one/cogs/blob/main/docs/adrs/ADR-020-alternative-cog-stores.md)
-- Backing plan: [`cognitum-one/cogs` docs/plans/alternative-cog-stores.md](https://github.com/cognitum-one/cogs/blob/main/docs/plans/alternative-cog-stores.md)
 
 ## Beyond multi-store: where the store is headed
 
@@ -69,8 +69,10 @@ experience (a `gearbox` CLI, local dev stores).
 
 ```
 docs/
-  protocol/   cog-store-protocol.md      # the store + catalog + signing contract
-  research/   cog-store-enhancements.md  # forward-looking feature research / roadmap
+  adr/        ADR-0001-pluggable-cog-stores.md  # the decision record
+  plans/      pluggable-cog-stores.md           # long-form design, rollout, prior art
+  protocol/   cog-store-protocol.md             # the store + catalog + signing contract
+  research/   cog-store-enhancements.md         # forward-looking feature research / roadmap
 ```
 
 Planned (not yet built): `crates/` — catalog generator, signer, and a reference store

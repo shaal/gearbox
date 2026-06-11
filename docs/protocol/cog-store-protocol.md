@@ -2,7 +2,7 @@
 
 **Status**: Draft
 **Date**: 2026-06-10
-**Implements**: [`cognitum-one/cogs` ADR-020](https://github.com/cognitum-one/cogs/blob/main/docs/adrs/ADR-020-alternative-cog-stores.md)
+**Implements**: [ADR-0001 (Pluggable cog stores)](../adr/ADR-0001-pluggable-cog-stores.md)
 
 This is the contract a **store operator** and the **Seed runtime** both implement so a
 Seed can install cogs from any store — official, private, or alternative-public — with
@@ -73,7 +73,7 @@ single catalog signature (useful when multiple publishers share one store).
 
 The catalog's `manifest` is the cog's `cog.toml` normalized to JSON. The one addition on
 the cog side is a scheme-agnostic relative `path` in `[[assets]]`; `gcs_path` remains a
-back-compat alias meaning "relative to the official GCS base." See ADR-020 §4.2.
+back-compat alias meaning "relative to the official GCS base." See [the plan](../plans/pluggable-cog-stores.md) §4.2.
 
 ## 4. Install algorithm (Seed-side)
 
