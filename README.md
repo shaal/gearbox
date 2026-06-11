@@ -71,6 +71,7 @@ experience (a `gearbox` CLI, local dev stores).
 docs/
   adr/        ADR-0001-pluggable-cog-stores.md  # the decision record
   plans/      pluggable-cog-stores.md           # long-form design, rollout, prior art
+              phase-1-implementation.md         # Phase 1 cross-repo task plan + issues
   protocol/   cog-store-protocol.md             # the store + catalog + signing contract
   research/   cog-store-enhancements.md         # forward-looking feature research / roadmap
 ```
