@@ -4,10 +4,11 @@
 **Date**: 2026-06-11
 
 > An honest, capability-by-capability status of what enterprise deployment requires vs. what
-> exists today, with evidence — and a prioritized road to close the gaps. It seeds a Phase-3
-> plan that does not yet exist (today Phase 3 lives only as "non-goals" in the
-> [Phase 2 plan](../plans/phase-2-implementation.md) and a rollout bullet in the
-> [Phase 1 plan](../plans/phase-1-implementation.md)).
+> exists today, with evidence — and a prioritized road to close the gaps. The Tier-0 wins
+> below are now planned in detail in the
+> [Phase 3 plan](../plans/phase-3-implementation.md); Tier 1/2 still live only as "non-goals"
+> in the [Phase 2 plan](../plans/phase-2-implementation.md) and a rollout bullet in the
+> [Phase 1 plan](../plans/phase-1-implementation.md).
 
 Status legend: **Built** (implemented + tested) · **Partial** · **Specced** (design only) ·
 **Not started**.
@@ -80,10 +81,10 @@ SBOM / vuln* layer that procurement increasingly checks is unbuilt.
 
 ## Road to enterprise-ready (priority)
 
-This is effectively the **seed of a Phase-3 plan**. Ordered: self-contained, demoable wins
-first; then first-deployment table-stakes; then compliance.
+Ordered: self-contained, demoable wins first; then first-deployment table-stakes; then
+compliance. Tier 0 is now planned in the [Phase 3 plan](../plans/phase-3-implementation.md).
 
-**Tier 0 — demoable, self-contained (buildable in this repo):**
+**Tier 0 — demoable, self-contained (buildable in this repo) — [planned](../plans/phase-3-implementation.md):**
 1. Air-gap **bundle export** (`gearbox export`) — §5.
 2. **Audit / event log** — §4.
 3. **Managed-mode policy** (allow-only-approved-stores, enforced pins) — §3.

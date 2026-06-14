@@ -82,6 +82,7 @@ docs/
   plans/      pluggable-cog-stores.md           # long-form design, rollout, prior art
               phase-1-implementation.md         # Phase 1: config-driven single store (done/specced)
               phase-2-implementation.md         # Phase 2: multi-store, namespacing, TOFU, auth
+              phase-3-implementation.md         # Phase 3 (Tier 0): air-gap export, audit log, managed mode
   protocol/   cog-store-protocol.md             # the store + catalog + signing contract
               testvectors/                      # executable signing contract (gearbox#1)
   research/   cog-store-enhancements.md         # forward-looking feature research / roadmap
