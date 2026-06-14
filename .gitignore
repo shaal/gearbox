@@ -2,7 +2,8 @@
 /target
 **/target/
 **/*.rs.bk
-Cargo.lock
+# Cargo.lock IS committed: gearbox ships a binary, and a pinned lockfile is required for
+# reproducible/auditable builds and meaningful `cargo audit` / `cargo deny` in CI.
 
 # Python
 __pycache__/

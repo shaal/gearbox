@@ -30,18 +30,27 @@ fn store_jcs_reproduces_frozen_canonical() {
     body.as_object_mut().unwrap().remove("signature");
     let canon = jcs::canonical(&body).unwrap();
     let expected = std::fs::read(tvdir().join("store.canonical.json")).unwrap();
-    assert_eq!(canon, expected, "Rust JCS of store.json differs from the committed vector");
+    assert_eq!(
+        canon, expected,
+        "Rust JCS of store.json differs from the committed vector"
+    );
 }
 
 #[test]
 fn store_self_signature_verifies() {
-    assert_eq!(store::verify_self_signed(&signed_store()).unwrap(), TEST_KEY_ID);
+    assert_eq!(
+        store::verify_self_signed(&signed_store()).unwrap(),
+        TEST_KEY_ID
+    );
 }
 
 #[test]
 fn store_fingerprint_matches() {
     let fps = store::fingerprints(&signed_store()).unwrap();
-    assert_eq!(fps, vec![(TEST_KEY_ID.to_string(), EXPECTED_FINGERPRINT.to_string())]);
+    assert_eq!(
+        fps,
+        vec![(TEST_KEY_ID.to_string(), EXPECTED_FINGERPRINT.to_string())]
+    );
 }
 
 #[test]
@@ -49,7 +58,7 @@ fn build_sign_validate_roundtrip_with_non_ascii() {
     let pubkey = signing::public_key_b64(&test_seed());
     let doc = store::build_store_info(
         "acme",
-        "ACME — Internal",                  // non-ASCII name
+        "ACME — Internal",                           // non-ASCII name
         "Internes Cog-Verzeichnis für ACME-Geräte.", // non-ASCII description
         "https://cogs.acme.internal/app-registry.json",
         "acme-2026",

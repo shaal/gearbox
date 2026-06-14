@@ -1,0 +1,15 @@
+# Code ownership for review routing. The whole repo defaults to the maintainer.
+# Protocol, signing, and the frozen vectors are security-critical: keep an owner on them
+# explicitly so changes there always get a maintainer review.
+
+*                               @shaal
+
+/docs/protocol/                 @shaal
+/docs/protocol/testvectors/     @shaal
+/docs/adr/                      @shaal
+/crates/gearbox/src/jcs.rs      @shaal
+/crates/gearbox/src/signing.rs  @shaal
+/tools/cogstore/jcs.py          @shaal
+/tools/cogstore/signing.py      @shaal
+/SECURITY.md                    @shaal
+/.github/                       @shaal

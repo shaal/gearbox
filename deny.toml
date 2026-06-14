@@ -1,0 +1,42 @@
+# cargo-deny configuration for the gearbox tooling.
+# A signing/distribution tool should apply to its own dependencies the same supply-chain
+# scrutiny it asks cogs to meet: no known-vulnerable crates, only approved licenses, and
+# only crates from the trusted registry. Run locally with `cargo deny --manifest-path
+# crates/gearbox/Cargo.toml check`.
+
+[advisories]
+version = 2
+# Fail on any crate with an open RustSec advisory. Add an explicit, commented entry here
+# only after triaging a specific RUSTSEC id (with the reason and a tracking link).
+ignore = []
+
+[licenses]
+version = 2
+# Permissive licenses compatible with this project's MIT license. Adding a license here is
+# a deliberate policy decision — keep the list tight.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "CC0-1.0",
+]
+confidence-threshold = 0.9
+# Keep a forward-looking allow list without warning on entries no current dep uses.
+unused-allowed-license = "allow"
+
+[bans]
+# Multiple versions of the same crate bloat the dependency tree and the audit surface.
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+# Only crates.io. Block unknown registries and arbitrary git sources outright.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

@@ -1,0 +1,27 @@
+version: 2
+updates:
+  # Rust reference implementation
+  - package-ecosystem: cargo
+    directory: /crates/gearbox
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps(cargo)"
+
+  # Python reference tooling
+  - package-ecosystem: pip
+    directory: /tools
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps(pip)"
+
+  # CI action versions
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "ci(actions)"

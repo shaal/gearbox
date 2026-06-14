@@ -41,7 +41,11 @@ pub fn serve(dir: &Path, port: u16, auth_token: Option<&str>) -> Result<(), Stri
     eprintln!(
         "gearbox serve: http://{addr} serving {} {}",
         dir.display(),
-        if auth_token.is_some() { "(bearer auth required)" } else { "(open)" }
+        if auth_token.is_some() {
+            "(bearer auth required)"
+        } else {
+            "(open)"
+        }
     );
     run(listener, dir.to_path_buf(), auth_token.map(String::from));
     Ok(())
@@ -83,8 +87,13 @@ fn handle(stream: TcpStream, dir: &Path, auth_token: Option<&str>) -> std::io::R
         let expected = format!("Bearer {token}");
         if auth_header.as_deref() != Some(expected.as_str()) {
             return respond_status(
-                &mut writer, 401, "Unauthorized",
-                &[("WWW-Authenticate", "Bearer"), ("Content-Type", "text/plain")],
+                &mut writer,
+                401,
+                "Unauthorized",
+                &[
+                    ("WWW-Authenticate", "Bearer"),
+                    ("Content-Type", "text/plain"),
+                ],
                 b"unauthorized",
             );
         }
@@ -131,13 +140,20 @@ fn respond(stream: &mut TcpStream, code: u16, ct: &str, body: &[u8]) -> std::io:
 }
 
 fn respond_status(
-    stream: &mut TcpStream, code: u16, reason: &str, headers: &[(&str, &str)], body: &[u8],
+    stream: &mut TcpStream,
+    code: u16,
+    reason: &str,
+    headers: &[(&str, &str)],
+    body: &[u8],
 ) -> std::io::Result<()> {
     let mut h = format!("HTTP/1.1 {code} {reason}\r\n");
     for (k, v) in headers {
         h.push_str(&format!("{k}: {v}\r\n"));
     }
-    h.push_str(&format!("Content-Length: {}\r\nConnection: close\r\n\r\n", body.len()));
+    h.push_str(&format!(
+        "Content-Length: {}\r\nConnection: close\r\n\r\n",
+        body.len()
+    ));
     stream.write_all(h.as_bytes())?;
     stream.write_all(body)?;
     stream.flush()

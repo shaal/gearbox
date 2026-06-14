@@ -24,7 +24,11 @@ fn signed_catalog() -> Value {
 }
 
 fn test_trust() -> HashMap<String, [u8; 32]> {
-    let pk: [u8; 32] = STANDARD.decode(TEST_PUBKEY_B64).unwrap().try_into().unwrap();
+    let pk: [u8; 32] = STANDARD
+        .decode(TEST_PUBKEY_B64)
+        .unwrap()
+        .try_into()
+        .unwrap();
     HashMap::from([(TEST_KEY_ID.to_string(), pk)])
 }
 

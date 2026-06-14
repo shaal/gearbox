@@ -1,0 +1,8 @@
+# Python reference (catalog generator + signer) runtime dependencies.
+# Python >= 3.11 is required (tomllib is stdlib). Install with:
+#   pip install -r tools/requirements.txt
+#
+# `cryptography` provides Ed25519 sign/verify (cogstore/signing.py). The range pins a
+# modern, maintained line; CI installs from it so the selftest and parity checks are
+# reproducible.
+cryptography>=42,<46

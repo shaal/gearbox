@@ -26,8 +26,12 @@ pub fn fingerprint(pubkey_b64: &str) -> Result<String, String> {
 
 /// Build an (unsigned) store-info document with a single key.
 pub fn build_store_info(
-    store_id: &str, name: &str, description: &str, catalog_url: &str,
-    key_id: &str, pubkey_b64: &str,
+    store_id: &str,
+    name: &str,
+    description: &str,
+    catalog_url: &str,
+    key_id: &str,
+    pubkey_b64: &str,
 ) -> Result<Value, String> {
     raw_key(pubkey_b64)?; // validate the key up front
     Ok(json!({
@@ -42,11 +46,20 @@ pub fn build_store_info(
 
 /// The store's own listed keys as a trust store.
 pub fn trust_from_keys(store: &Value) -> Result<TrustStore, String> {
-    let keys = store.get("keys").and_then(Value::as_array).ok_or("store.json: missing keys[]")?;
+    let keys = store
+        .get("keys")
+        .and_then(Value::as_array)
+        .ok_or("store.json: missing keys[]")?;
     let mut t = TrustStore::new();
     for k in keys {
-        let kid = k.get("key_id").and_then(Value::as_str).ok_or("store.json key: missing key_id")?;
-        let pb = k.get("pubkey_b64").and_then(Value::as_str).ok_or("store.json key: missing pubkey_b64")?;
+        let kid = k
+            .get("key_id")
+            .and_then(Value::as_str)
+            .ok_or("store.json key: missing key_id")?;
+        let pb = k
+            .get("pubkey_b64")
+            .and_then(Value::as_str)
+            .ok_or("store.json key: missing pubkey_b64")?;
         t.insert(kid.to_string(), raw_key(pb)?);
     }
     Ok(t)
@@ -54,11 +67,20 @@ pub fn trust_from_keys(store: &Value) -> Result<TrustStore, String> {
 
 /// `(key_id, fingerprint)` for each key — what the TOFU prompt shows.
 pub fn fingerprints(store: &Value) -> Result<Vec<(String, String)>, String> {
-    let keys = store.get("keys").and_then(Value::as_array).ok_or("store.json: missing keys[]")?;
+    let keys = store
+        .get("keys")
+        .and_then(Value::as_array)
+        .ok_or("store.json: missing keys[]")?;
     keys.iter()
         .map(|k| {
-            let kid = k.get("key_id").and_then(Value::as_str).ok_or("key missing key_id")?;
-            let pb = k.get("pubkey_b64").and_then(Value::as_str).ok_or("key missing pubkey_b64")?;
+            let kid = k
+                .get("key_id")
+                .and_then(Value::as_str)
+                .ok_or("key missing key_id")?;
+            let pb = k
+                .get("pubkey_b64")
+                .and_then(Value::as_str)
+                .ok_or("key missing pubkey_b64")?;
             Ok((kid.to_string(), fingerprint(pb)?))
         })
         .collect()
@@ -71,30 +93,49 @@ pub fn verify_self_signed(store: &Value) -> Result<String, String> {
 }
 
 pub fn validate(store: &Value) -> Result<(), String> {
-    let o = store.as_object().ok_or("invalid store.json: not an object")?;
+    let o = store
+        .as_object()
+        .ok_or("invalid store.json: not an object")?;
     if o.get("schema_version").and_then(Value::as_i64) != Some(1) {
         return Err("invalid store.json: schema_version must be 1".into());
     }
     for f in ["store_id", "name", "catalog_url"] {
-        if !o.get(f).and_then(Value::as_str).is_some_and(|s| !s.is_empty()) {
+        if !o
+            .get(f)
+            .and_then(Value::as_str)
+            .is_some_and(|s| !s.is_empty())
+        {
             return Err(format!("invalid store.json: `{f}` missing"));
         }
     }
     let url = o.get("catalog_url").and_then(Value::as_str).unwrap();
     if !url.contains("://") {
-        return Err(format!("invalid store.json: catalog_url must be an absolute URL, got {url:?}"));
+        return Err(format!(
+            "invalid store.json: catalog_url must be an absolute URL, got {url:?}"
+        ));
     }
-    let keys = o.get("keys").and_then(Value::as_array).filter(|k| !k.is_empty())
+    let keys = o
+        .get("keys")
+        .and_then(Value::as_array)
+        .filter(|k| !k.is_empty())
         .ok_or("invalid store.json: keys[] must be non-empty")?;
     for k in keys {
-        let ko = k.as_object().ok_or("invalid store.json: a key is not an object")?;
+        let ko = k
+            .as_object()
+            .ok_or("invalid store.json: a key is not an object")?;
         if ko.get("alg").and_then(Value::as_str) != Some("ed25519") {
             return Err("invalid store.json: key alg must be ed25519".into());
         }
-        if !ko.get("key_id").and_then(Value::as_str).is_some_and(|s| !s.is_empty()) {
+        if !ko
+            .get("key_id")
+            .and_then(Value::as_str)
+            .is_some_and(|s| !s.is_empty())
+        {
             return Err("invalid store.json: key.key_id missing".into());
         }
-        let pb = ko.get("pubkey_b64").and_then(Value::as_str)
+        let pb = ko
+            .get("pubkey_b64")
+            .and_then(Value::as_str)
             .ok_or("invalid store.json: key.pubkey_b64 missing")?;
         raw_key(pb)?; // must be base64 of 32 bytes
     }
