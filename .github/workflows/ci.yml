@@ -97,12 +97,10 @@ jobs:
           test "$SIG_PY" = "$SIG_RS" || { echo "::error::Rust/Python signatures diverge"; exit 1; }
           echo "Cross-impl signatures are byte-identical."
 
-  # ---- Advisory: style + lints. Non-blocking until the existing drift is cleaned up,
-  #      then flip continue-on-error to false to make it a required gate. ----
+  # ---- Required: style + lints. ----
   lint:
-    name: Lint (fmt + clippy, advisory)
+    name: Lint (fmt + clippy)
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -116,13 +114,12 @@ jobs:
       - name: clippy
         run: cargo clippy --manifest-path crates/gearbox/Cargo.toml --all-targets -- -D warnings
 
-  # ---- Advisory: supply-chain (vuln advisories, licenses, bans, sources) for the
+  # ---- Required: supply-chain (vuln advisories, licenses, bans, sources) for the
   #      gearbox tooling's own dependencies. A signing tool should hold itself to the
-  #      bar it sets for cogs. Promote to required once the first run is green. ----
+  #      bar it sets for cogs. ----
   supply-chain:
-    name: Supply chain (cargo-deny, advisory)
+    name: Supply chain (cargo-deny)
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: EmbarkStudios/cargo-deny-action@v2

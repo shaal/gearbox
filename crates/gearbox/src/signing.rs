@@ -52,18 +52,31 @@ pub fn sign_document(doc: &Value, seed: &[u8; 32], key_id: &str) -> Result<Value
 pub fn verify_document(doc: &Value, trust: &TrustStore) -> Result<String, String> {
     let obj = doc.as_object().ok_or("document is not a JSON object")?;
     let sig = obj.get("signature").ok_or("document has no signature")?;
-    let key_id = sig.get("key_id").and_then(Value::as_str).ok_or("malformed signature.key_id")?;
-    let alg = sig.get("alg").and_then(Value::as_str).ok_or("malformed signature.alg")?;
-    let sig_b64 = sig.get("sig").and_then(Value::as_str).ok_or("malformed signature.sig")?;
+    let key_id = sig
+        .get("key_id")
+        .and_then(Value::as_str)
+        .ok_or("malformed signature.key_id")?;
+    let alg = sig
+        .get("alg")
+        .and_then(Value::as_str)
+        .ok_or("malformed signature.alg")?;
+    let sig_b64 = sig
+        .get("sig")
+        .and_then(Value::as_str)
+        .ok_or("malformed signature.sig")?;
 
     if alg != "ed25519" {
         return Err(format!("unsupported alg {alg:?}"));
     }
-    let pk = trust.get(key_id).ok_or_else(|| format!("untrusted key_id {key_id:?}"))?;
+    let pk = trust
+        .get(key_id)
+        .ok_or_else(|| format!("untrusted key_id {key_id:?}"))?;
     let vk = VerifyingKey::from_bytes(pk).map_err(|e| format!("bad public key: {e}"))?;
 
     let msg = signing_input(doc)?;
-    let raw = STANDARD.decode(sig_b64).map_err(|e| format!("bad base64: {e}"))?;
+    let raw = STANDARD
+        .decode(sig_b64)
+        .map_err(|e| format!("bad base64: {e}"))?;
     let signature = Signature::from_slice(&raw).map_err(|e| format!("bad signature: {e}"))?;
     vk.verify_strict(&msg, &signature)
         .map_err(|_| "signature did not verify".to_string())?;

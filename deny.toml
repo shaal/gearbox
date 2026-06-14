@@ -27,6 +27,8 @@ allow = [
     "CC0-1.0",
 ]
 confidence-threshold = 0.9
+# Keep a forward-looking allow list without warning on entries no current dep uses.
+unused-allowed-license = "allow"
 
 [bans]
 # Multiple versions of the same crate bloat the dependency tree and the audit surface.

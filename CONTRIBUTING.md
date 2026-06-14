@@ -35,9 +35,10 @@ the source of truth, and the code exists to implement and prove them.
   ```
 
 A change is "green" when **both** `cargo test` and `tools/selftest.sh` pass. CI
-([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) enforces this on every PR: the
-`rust`, `python`, and cross-implementation `parity` jobs are required; `lint` (rustfmt +
-clippy) and `supply-chain` (`cargo deny`) run as advisory for now.
+([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) enforces this on every PR: `rust`,
+`python`, cross-implementation `parity`, `lint` (rustfmt + clippy), and `supply-chain`
+(`cargo deny`) all run as required gates. Run them locally with `cargo fmt --check`,
+`cargo clippy --all-targets -- -D warnings`, and (optional) `cargo deny check`.
 
 ## The one rule: don't break the test vectors
 

@@ -15,24 +15,32 @@ const SHA256_HEX_LEN: usize = 64;
 pub fn arch_of(binary: &str) -> Result<String, String> {
     let parts: Vec<&str> = binary.split('-').collect();
     if parts.len() < 3 {
-        return Err(format!("binary {binary:?} is not of the form cog-<name>-<arch>"));
+        return Err(format!(
+            "binary {binary:?} is not of the form cog-<name>-<arch>"
+        ));
     }
     Ok((*parts.last().unwrap()).to_string())
 }
 
 fn str_field<'a>(o: &'a Map<String, Value>, k: &str, ctx: &str) -> Result<&'a str, String> {
-    o.get(k).and_then(Value::as_str).ok_or_else(|| format!("{ctx}: missing/invalid `{k}`"))
+    o.get(k)
+        .and_then(Value::as_str)
+        .ok_or_else(|| format!("{ctx}: missing/invalid `{k}`"))
 }
 
 /// Catalog artifact entry for a manifest `[[assets]]` block — self-contained for install.
 pub fn asset_entry(a: &Map<String, Value>, arch: &str) -> Result<Value, String> {
     let id = str_field(a, "id", "asset")?;
-    let rel = a.get("path").and_then(Value::as_str)
+    let rel = a
+        .get("path")
+        .and_then(Value::as_str)
         .or_else(|| a.get("gcs_path").and_then(Value::as_str))
         .ok_or_else(|| format!("asset {id}: needs `path` or `gcs_path`"))?;
     let filename = str_field(a, "filename", &format!("asset {id}"))?;
     let sha256 = str_field(a, "sha256", &format!("asset {id}"))?;
-    let size = a.get("size_bytes").and_then(Value::as_i64)
+    let size = a
+        .get("size_bytes")
+        .and_then(Value::as_i64)
         .ok_or_else(|| format!("asset {id}: missing `size_bytes`"))?;
 
     let mut e = Map::new();
@@ -48,11 +56,16 @@ pub fn asset_entry(a: &Map<String, Value>, arch: &str) -> Result<Value, String> 
 }
 
 pub fn build_cog_version(
-    cog_dir: &Path, artifacts_dir: Option<&Path>, manifests_only: bool,
+    cog_dir: &Path,
+    artifacts_dir: Option<&Path>,
+    manifests_only: bool,
 ) -> Result<Value, String> {
     let toml_str = std::fs::read_to_string(cog_dir.join("cog.toml")).map_err(|e| e.to_string())?;
     let manifest: Value = toml::from_str(&toml_str).map_err(|e| format!("parse cog.toml: {e}"))?;
-    let cog = manifest.get("cog").and_then(Value::as_object).ok_or("missing [cog]")?;
+    let cog = manifest
+        .get("cog")
+        .and_then(Value::as_object)
+        .ok_or("missing [cog]")?;
     let binary = str_field(cog, "binary", "[cog]")?;
     let version = str_field(cog, "version", "[cog]")?.to_string();
     let arch = arch_of(binary)?;
@@ -98,7 +111,10 @@ pub fn cog_ids(catalog: &Value) -> Vec<String> {
 }
 
 pub fn build_catalog(
-    cogs_dir: &Path, artifacts_dir: Option<&Path>, store_id: &str, generated_at: &str,
+    cogs_dir: &Path,
+    artifacts_dir: Option<&Path>,
+    store_id: &str,
+    generated_at: &str,
     manifests_only: bool,
 ) -> Result<Value, String> {
     let mut dirs: Vec<PathBuf> = std::fs::read_dir(cogs_dir)
@@ -111,7 +127,10 @@ pub fn build_catalog(
     let mut cogs = Vec::new();
     for d in &dirs {
         let ver = build_cog_version(d, artifacts_dir, manifests_only)?;
-        let id = ver["manifest"]["cog"]["id"].as_str().ok_or("missing cog.id")?.to_string();
+        let id = ver["manifest"]["cog"]["id"]
+            .as_str()
+            .ok_or("missing cog.id")?
+            .to_string();
         cogs.push(serde_json::json!({ "id": id, "versions": [ver] }));
     }
 
@@ -126,25 +145,39 @@ pub fn build_catalog(
 }
 
 pub fn validate(catalog: &Value) -> Result<(), String> {
-    let o = catalog.as_object().ok_or("invalid catalog: not an object")?;
+    let o = catalog
+        .as_object()
+        .ok_or("invalid catalog: not an object")?;
     if o.get("schema_version").and_then(Value::as_i64) != Some(1) {
         return Err("invalid catalog: schema_version must be 1".into());
     }
-    if !o.get("store_id").and_then(Value::as_str).is_some_and(|s| !s.is_empty()) {
+    if !o
+        .get("store_id")
+        .and_then(Value::as_str)
+        .is_some_and(|s| !s.is_empty())
+    {
         return Err("invalid catalog: store_id missing".into());
     }
     if o.get("generated_at").and_then(Value::as_str).is_none() {
         return Err("invalid catalog: generated_at must be a string".into());
     }
-    let cogs = o.get("cogs").and_then(Value::as_array).ok_or("invalid catalog: cogs must be a list")?;
+    let cogs = o
+        .get("cogs")
+        .and_then(Value::as_array)
+        .ok_or("invalid catalog: cogs must be a list")?;
 
     let mut seen = std::collections::HashSet::new();
     for c in cogs {
-        let cid = c.get("id").and_then(Value::as_str).ok_or("invalid catalog: cog.id missing")?;
+        let cid = c
+            .get("id")
+            .and_then(Value::as_str)
+            .ok_or("invalid catalog: cog.id missing")?;
         if !seen.insert(cid) {
             return Err(format!("invalid catalog: duplicate cog id {cid:?}"));
         }
-        let versions = c.get("versions").and_then(Value::as_array)
+        let versions = c
+            .get("versions")
+            .and_then(Value::as_array)
             .filter(|v| !v.is_empty())
             .ok_or_else(|| format!("invalid catalog: {cid}.versions empty"))?;
         for v in versions {
@@ -154,20 +187,32 @@ pub fn validate(catalog: &Value) -> Result<(), String> {
             if v.get("manifest").and_then(Value::as_object).is_none() {
                 return Err(format!("invalid catalog: {cid}.manifest missing"));
             }
-            let arts = v.get("artifacts").and_then(Value::as_object)
+            let arts = v
+                .get("artifacts")
+                .and_then(Value::as_object)
                 .ok_or_else(|| format!("invalid catalog: {cid}.artifacts missing"))?;
             check_artifact(arts.get("binary"), &format!("{cid} binary"), true)?;
-            let assets = arts.get("assets").and_then(Value::as_array)
+            let assets = arts
+                .get("assets")
+                .and_then(Value::as_array)
                 .ok_or_else(|| format!("invalid catalog: {cid} assets must be a list"))?;
             for a in assets {
                 let aid = a.get("id").and_then(Value::as_str).unwrap_or("?");
                 check_artifact(Some(a), &format!("{cid} asset {aid}"), false)?;
-                if !a.get("filename").and_then(Value::as_str).is_some_and(|s| !s.is_empty()) {
-                    return Err(format!("invalid catalog: {cid} asset {aid}: filename missing"));
+                if !a
+                    .get("filename")
+                    .and_then(Value::as_str)
+                    .is_some_and(|s| !s.is_empty())
+                {
+                    return Err(format!(
+                        "invalid catalog: {cid} asset {aid}: filename missing"
+                    ));
                 }
                 if let Some(rw) = a.get("required_when") {
                     if !rw.is_string() {
-                        return Err(format!("invalid catalog: {cid} asset {aid}: required_when must be a string"));
+                        return Err(format!(
+                            "invalid catalog: {cid} asset {aid}: required_when must be a string"
+                        ));
                     }
                 }
             }
@@ -177,24 +222,40 @@ pub fn validate(catalog: &Value) -> Result<(), String> {
 }
 
 fn check_artifact(a: Option<&Value>, where_: &str, allow_pending: bool) -> Result<(), String> {
-    let o = a.and_then(Value::as_object).ok_or_else(|| format!("invalid catalog: {where_}: missing"))?;
-    let p = o.get("path").and_then(Value::as_str).filter(|s| !s.is_empty())
+    let o = a
+        .and_then(Value::as_object)
+        .ok_or_else(|| format!("invalid catalog: {where_}: missing"))?;
+    let p = o
+        .get("path")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
         .ok_or_else(|| format!("invalid catalog: {where_}: path missing"))?;
     if p.contains("://") || p.starts_with('/') {
-        return Err(format!("invalid catalog: {where_}: path must be relative, got {p:?}"));
+        return Err(format!(
+            "invalid catalog: {where_}: path must be relative, got {p:?}"
+        ));
     }
     if allow_pending && o.get("pending").and_then(Value::as_bool) == Some(true) {
         return Ok(());
     }
     let sha_ok = o.get("sha256").and_then(Value::as_str).is_some_and(|s| {
         s.len() == SHA256_HEX_LEN
-            && s.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            && s.bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
     });
     if !sha_ok {
-        return Err(format!("invalid catalog: {where_}: sha256 must be 64 lowercase hex"));
+        return Err(format!(
+            "invalid catalog: {where_}: sha256 must be 64 lowercase hex"
+        ));
     }
-    if !o.get("size").and_then(Value::as_i64).is_some_and(|n| n >= 0) {
-        return Err(format!("invalid catalog: {where_}: size must be a non-negative integer"));
+    if !o
+        .get("size")
+        .and_then(Value::as_i64)
+        .is_some_and(|n| n >= 0)
+    {
+        return Err(format!(
+            "invalid catalog: {where_}: size must be a non-negative integer"
+        ));
     }
     Ok(())
 }

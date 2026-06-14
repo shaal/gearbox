@@ -53,10 +53,11 @@ fn main() {
     exit(code);
 }
 
+/// Parsed CLI args: `--key value` pairs, the boolean flags present, and positionals.
+type ParsedFlags = (HashMap<String, String>, HashSet<String>, Vec<String>);
+
 /// Split args into `(--key value)` pairs, boolean flags, and positionals.
-fn parse_flags(
-    args: &[String], bool_flags: &[&str],
-) -> Result<(HashMap<String, String>, HashSet<String>, Vec<String>), String> {
+fn parse_flags(args: &[String], bool_flags: &[&str]) -> Result<ParsedFlags, String> {
     let mut kv = HashMap::new();
     let mut flags = HashSet::new();
     let mut pos = Vec::new();
@@ -68,7 +69,9 @@ fn parse_flags(
                 flags.insert(a.clone());
                 i += 1;
             } else {
-                let v = args.get(i + 1).ok_or_else(|| format!("{a} needs a value"))?;
+                let v = args
+                    .get(i + 1)
+                    .ok_or_else(|| format!("{a} needs a value"))?;
                 kv.insert(a.clone(), v.clone());
                 i += 2;
             }
@@ -92,7 +95,8 @@ fn write_json(path: &str, value: &Value) -> Result<(), String> {
 
 fn decode_seed(h: &str) -> Result<[u8; 32], String> {
     let v = hex::decode(h.trim()).map_err(|e| format!("seed not hex: {e}"))?;
-    v.try_into().map_err(|_| "seed must decode to 32 bytes".to_string())
+    v.try_into()
+        .map_err(|_| "seed must decode to 32 bytes".to_string())
 }
 
 fn maybe_sign(catalog: Value, kv: &HashMap<String, String>) -> Result<(Value, bool), String> {
@@ -127,7 +131,11 @@ fn cmd_verify(args: &[String]) -> i32 {
             return 1;
         }
     };
-    let pk: [u8; 32] = match STANDARD.decode(pubkey_b64).ok().and_then(|v| v.try_into().ok()) {
+    let pk: [u8; 32] = match STANDARD
+        .decode(pubkey_b64)
+        .ok()
+        .and_then(|v| v.try_into().ok())
+    {
         Some(a) => a,
         None => {
             eprintln!("FAIL: --pubkey-b64 must be base64 of exactly 32 bytes");
@@ -196,7 +204,11 @@ fn cmd_catalog(args: &[String]) -> i32 {
         eprintln!("FAIL: {e}");
         return 1;
     }
-    let mode = if manifests_only { "manifests-only" } else { "full" };
+    let mode = if manifests_only {
+        "manifests-only"
+    } else {
+        "full"
+    };
     let status = if signed { "signed" } else { "UNSIGNED" };
     let n = catalog["cogs"].as_array().map_or(0, |a| a.len());
     println!("wrote {out} — {n} cog(s), {mode}, {status}");
@@ -271,7 +283,9 @@ fn cmd_store_create(args: &[String]) -> i32 {
                 let derived = signing::public_key_b64(&seed);
                 if let Some(pb) = pb {
                     if pb != &derived {
-                        eprintln!("FAIL: --pubkey-b64 does not match the key derived from --sign-seed-hex");
+                        eprintln!(
+                        "FAIL: --pubkey-b64 does not match the key derived from --sign-seed-hex"
+                    );
                         return 1;
                     }
                 }
@@ -284,7 +298,14 @@ fn cmd_store_create(args: &[String]) -> i32 {
             }
         };
 
-    let doc = match store::build_store_info(store_id, name, description, catalog_url, key_id, &pubkey_b64) {
+    let doc = match store::build_store_info(
+        store_id,
+        name,
+        description,
+        catalog_url,
+        key_id,
+        &pubkey_b64,
+    ) {
         Ok(d) => d,
         Err(e) => {
             eprintln!("FAIL: {e}");

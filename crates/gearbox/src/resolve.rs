@@ -37,7 +37,9 @@ pub fn parse_ref(s: &str) -> Result<CogRef, String> {
     match parts.as_slice() {
         [cog] => {
             check_token(cog, "cog id")?;
-            Ok(CogRef::Bare { cog_id: (*cog).to_string() })
+            Ok(CogRef::Bare {
+                cog_id: (*cog).to_string(),
+            })
         }
         [store, cog] => {
             check_token(store, "store id")?;
@@ -47,7 +49,9 @@ pub fn parse_ref(s: &str) -> Result<CogRef, String> {
                 cog_id: (*cog).to_string(),
             })
         }
-        _ => Err(format!("reference {s:?} has too many '/' (use store/cog or cog)")),
+        _ => Err(format!(
+            "reference {s:?} has too many '/' (use store/cog or cog)"
+        )),
     }
 }
 
@@ -126,14 +130,22 @@ impl Resolver {
         }
         for (cog, store) in &pins {
             if !map.contains_key(store) {
-                return Err(format!("pin for {cog:?} references unknown store {store:?}"));
+                return Err(format!(
+                    "pin for {cog:?} references unknown store {store:?}"
+                ));
             }
         }
-        Ok(Self { stores: map, offerings, pins })
+        Ok(Self {
+            stores: map,
+            offerings,
+            pins,
+        })
     }
 
     fn offers(&self, store_id: &str, cog_id: &str) -> bool {
-        self.offerings.get(store_id).is_some_and(|s| s.contains(cog_id))
+        self.offerings
+            .get(store_id)
+            .is_some_and(|s| s.contains(cog_id))
     }
 
     /// Resolve a reference to a concrete `(store, cog)` or a typed error.
@@ -141,13 +153,21 @@ impl Resolver {
         match parse_ref(query).map_err(ResolveError::BadRef)? {
             CogRef::Namespaced { store_id, cog_id } => {
                 self.check_store_serves(&store_id, &cog_id)?;
-                Ok(Resolution { store_id, cog_id, reason: ResolveReason::Explicit })
+                Ok(Resolution {
+                    store_id,
+                    cog_id,
+                    reason: ResolveReason::Explicit,
+                })
             }
             CogRef::Bare { cog_id } => {
                 if let Some(pin_store) = self.pins.get(&cog_id) {
                     let pin_store = pin_store.clone();
                     self.check_store_serves(&pin_store, &cog_id)?;
-                    return Ok(Resolution { store_id: pin_store, cog_id, reason: ResolveReason::Pinned });
+                    return Ok(Resolution {
+                        store_id: pin_store,
+                        cog_id,
+                        reason: ResolveReason::Pinned,
+                    });
                 }
                 match self.candidates(&cog_id).first() {
                     Some(store) => Ok(Resolution {
@@ -162,7 +182,10 @@ impl Resolver {
     }
 
     fn check_store_serves(&self, store_id: &str, cog_id: &str) -> Result<(), ResolveError> {
-        let store = self.stores.get(store_id).ok_or_else(|| ResolveError::UnknownStore(store_id.to_string()))?;
+        let store = self
+            .stores
+            .get(store_id)
+            .ok_or_else(|| ResolveError::UnknownStore(store_id.to_string()))?;
         if !store.enabled {
             return Err(ResolveError::StoreDisabled(store_id.to_string()));
         }

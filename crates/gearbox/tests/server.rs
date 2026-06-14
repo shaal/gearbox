@@ -62,7 +62,10 @@ fn serves_files_404s_and_blocks_traversal() {
     assert_eq!(code, 200);
     assert_eq!(body, br#"{"store_id":"demo"}"#);
 
-    assert_eq!(get(addr, "/cogs/arm/cog-x-arm", None), (200, b"binary-bytes".to_vec()));
+    assert_eq!(
+        get(addr, "/cogs/arm/cog-x-arm", None),
+        (200, b"binary-bytes".to_vec())
+    );
     assert_eq!(get(addr, "/missing.json", None).0, 404);
     assert!(matches!(get(addr, "/../../etc/passwd", None).0, 403 | 404));
     assert_eq!(get(addr, "/health", None).0, 200);

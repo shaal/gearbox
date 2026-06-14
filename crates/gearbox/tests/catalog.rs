@@ -38,13 +38,26 @@ fn builds_validates_signs_verifies() {
 
     let doom = &cogs[1];
     let arts = &doom["versions"][0]["artifacts"];
-    assert!(arts["binary"]["sha256"].is_string(), "binary hashed in full mode");
-    assert_eq!(arts["assets"][0]["filename"], "freedoom1.wad", "asset carries filename");
+    assert!(
+        arts["binary"]["sha256"].is_string(),
+        "binary hashed in full mode"
+    );
+    assert_eq!(
+        arts["assets"][0]["filename"], "freedoom1.wad",
+        "asset carries filename"
+    );
 
     let signed = signing::sign_catalog(&cat, &test_seed(), TEST_KEY_ID).unwrap();
-    let pk: [u8; 32] = STANDARD.decode(TEST_PUBKEY_B64).unwrap().try_into().unwrap();
+    let pk: [u8; 32] = STANDARD
+        .decode(TEST_PUBKEY_B64)
+        .unwrap()
+        .try_into()
+        .unwrap();
     let trust = HashMap::from([(TEST_KEY_ID.to_string(), pk)]);
-    assert_eq!(signing::verify_catalog(&signed, &trust).unwrap(), TEST_KEY_ID);
+    assert_eq!(
+        signing::verify_catalog(&signed, &trust).unwrap(),
+        TEST_KEY_ID
+    );
 }
 
 #[test]
@@ -59,7 +72,12 @@ fn manifests_only_has_pending_binary() {
     .unwrap();
     catalog::validate(&cat).unwrap();
 
-    let doom = cat["cogs"].as_array().unwrap().iter().find(|c| c["id"] == "doom").unwrap();
+    let doom = cat["cogs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["id"] == "doom")
+        .unwrap();
     let bin = &doom["versions"][0]["artifacts"]["binary"];
     assert_eq!(bin["pending"], true);
     assert!(bin.get("sha256").is_none(), "pending binary has no hash");
