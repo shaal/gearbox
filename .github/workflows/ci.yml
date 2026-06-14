@@ -1,0 +1,131 @@
+name: CI
+
+# The protocol contract: the frozen test vectors in docs/protocol/testvectors/ are
+# authoritative, and the Rust and Python reference implementations MUST agree with them
+# byte-for-byte. These jobs enforce that contract on every push and pull request so a
+# canonicalization/signing drift can never merge silently.
+
+on:
+  push:
+    branches: [main, 'claude/**']
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # The published throwaway seed + key id used by the frozen test vectors. Not a secret.
+  TV_SEED: 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
+  TV_KEY_ID: gearbox-testvector-2026
+  TV_GENERATED_AT: 2026-06-10T00:00:00Z
+
+jobs:
+  # ---- Required: the Rust reference reproduces the frozen vectors ----
+  rust:
+    name: Rust (build + test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/gearbox
+      - name: Build
+        run: cargo build --manifest-path crates/gearbox/Cargo.toml --locked
+      - name: Test (vectors + parity + resolve + store + server)
+        run: cargo test --manifest-path crates/gearbox/Cargo.toml --locked
+
+  # ---- Required: the Python reference reproduces the frozen vectors ----
+  python:
+    name: Python (selftest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install reference deps
+        run: pip install -r tools/requirements.txt
+      - name: Self-test (conformance + e2e + verify)
+        run: bash tools/selftest.sh
+
+  # ---- Required: the two implementations agree byte-for-byte ----
+  # Each implementation signs a catalog from the same testdata; the other verifies it,
+  # and the resulting Ed25519 signatures must be byte-identical. This is the cross-impl
+  # guarantee the README promises ("Rust <-> Python in agreement").
+  parity:
+    name: Cross-impl parity (Rust <-> Python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/gearbox
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r tools/requirements.txt
+      - run: cargo build --manifest-path crates/gearbox/Cargo.toml --locked
+      - name: Sign in each impl, verify with the other, compare signatures
+        run: |
+          set -euo pipefail
+          BIN=crates/gearbox/target/debug/gearbox
+          PUB=$(cd tools && python3 -c "from cogstore.signing import public_key_b64; \
+            print(public_key_b64(bytes.fromhex('${TV_SEED}')))")
+
+          # Python signs -> Rust verifies
+          python3 tools/catalog_gen.py \
+            --cogs-dir tools/testdata/cogs --artifacts-dir tools/testdata/artifacts \
+            --store-id cognitum-official --generated-at "${TV_GENERATED_AT}" \
+            --out py.json --sign-seed-hex "${TV_SEED}" --key-id "${TV_KEY_ID}"
+          "$BIN" verify py.json --key-id "${TV_KEY_ID}" --pubkey-b64 "$PUB"
+
+          # Rust signs -> Python verifies
+          "$BIN" catalog \
+            --cogs-dir tools/testdata/cogs --artifacts-dir tools/testdata/artifacts \
+            --store-id cognitum-official --generated-at "${TV_GENERATED_AT}" \
+            --out rs.json --sign-seed-hex "${TV_SEED}" --key-id "${TV_KEY_ID}"
+          python3 tools/verify_catalog.py rs.json --key-id "${TV_KEY_ID}" --pubkey-b64 "$PUB"
+
+          # Signatures must be byte-identical (deterministic Ed25519 over identical JCS bytes)
+          SIG_PY=$(python3 -c "import json;print(json.load(open('py.json'))['signature']['sig'])")
+          SIG_RS=$(python3 -c "import json;print(json.load(open('rs.json'))['signature']['sig'])")
+          echo "py: $SIG_PY"
+          echo "rs: $SIG_RS"
+          test "$SIG_PY" = "$SIG_RS" || { echo "::error::Rust/Python signatures diverge"; exit 1; }
+          echo "Cross-impl signatures are byte-identical."
+
+  # ---- Advisory: style + lints. Non-blocking until the existing drift is cleaned up,
+  #      then flip continue-on-error to false to make it a required gate. ----
+  lint:
+    name: Lint (fmt + clippy, advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/gearbox
+      - name: rustfmt
+        run: cargo fmt --manifest-path crates/gearbox/Cargo.toml --check
+      - name: clippy
+        run: cargo clippy --manifest-path crates/gearbox/Cargo.toml --all-targets -- -D warnings
+
+  # ---- Advisory: supply-chain (vuln advisories, licenses, bans, sources) for the
+  #      gearbox tooling's own dependencies. A signing tool should hold itself to the
+  #      bar it sets for cogs. Promote to required once the first run is green. ----
+  supply-chain:
+    name: Supply chain (cargo-deny, advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: crates/gearbox/Cargo.toml
+          command: check advisories bans licenses sources

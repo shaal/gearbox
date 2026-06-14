@@ -28,6 +28,10 @@ tools/
 - Python ≥ 3.11 (`tomllib` is stdlib)
 - [`cryptography`](https://pypi.org/project/cryptography/) (Ed25519)
 
+```bash
+pip install -r requirements.txt
+```
+
 ## Generate a catalog
 
 ```bash

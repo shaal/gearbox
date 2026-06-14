@@ -24,8 +24,9 @@ the source of truth, and the code exists to implement and prove them.
   cargo test --manifest-path crates/gearbox/Cargo.toml      # all crate tests
   cargo build --manifest-path crates/gearbox/Cargo.toml     # build the `gearbox` CLI
   ```
-- **Python tools** — Python ≥ 3.11 + [`cryptography`](https://pypi.org/project/cryptography/):
+- **Python tools** — Python ≥ 3.11:
   ```bash
+  pip install -r tools/requirements.txt    # cryptography (Ed25519)
   tools/selftest.sh
   ```
 - **End-to-end demo** (build the CLI first; needs `curl`, `python3`, `sha256sum`):
@@ -33,7 +34,10 @@ the source of truth, and the code exists to implement and prove them.
   examples/store-loop.sh
   ```
 
-A change is "green" when **both** `cargo test` and `tools/selftest.sh` pass.
+A change is "green" when **both** `cargo test` and `tools/selftest.sh` pass. CI
+([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) enforces this on every PR: the
+`rust`, `python`, and cross-implementation `parity` jobs are required; `lint` (rustfmt +
+clippy) and `supply-chain` (`cargo deny`) run as advisory for now.
 
 ## The one rule: don't break the test vectors
 
@@ -80,7 +84,8 @@ Keep PRs focused; explain the *why*, not just the *what*. Match the surrounding 
 ## Reporting security issues
 
 Gearbox is a signing/trust system — please report vulnerabilities **privately**, not in a
-public issue. Use GitHub's **private security advisory** ("Security" tab → "Report a
+public issue. See [SECURITY.md](SECURITY.md) for the policy, scope, and response targets; in
+short, use GitHub's **private security advisory** ("Security" tab → "Report a
 vulnerability"). Note the threat model already documented in
 [ADR-0002](docs/adr/ADR-0002-store-info-and-tofu.md) (e.g. TOFU's unauthenticated first
 fetch); reports that sharpen or extend it are welcome.

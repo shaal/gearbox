@@ -1,5 +1,7 @@
 # Gearbox
 
+[![CI](https://github.com/shaal/gearbox/actions/workflows/ci.yml/badge.svg)](https://github.com/shaal/gearbox/actions/workflows/ci.yml)
+
 **A cog store for Cognitum Seed — private, alternative, and self-hostable.**
 
 > A gearbox is the housing that holds and meshes a set of cogs. This project is the
@@ -108,7 +110,8 @@ Early and spec-driven — see [CONTRIBUTING.md](CONTRIBUTING.md). The short vers
 vectors in `docs/protocol/testvectors/` are the contract (changes must keep them byte-for-byte
 and the Rust ↔ Python implementations in agreement), and protocol changes go through an ADR.
 Build + test with `cargo test --manifest-path crates/gearbox/Cargo.toml` and `tools/selftest.sh`.
-Security issues: please use a private GitHub security advisory, not a public issue.
+Security issues: see [SECURITY.md](SECURITY.md) — please use a private GitHub security
+advisory, not a public issue.
 
 ## License
 
