@@ -9,6 +9,8 @@
 #                       frozen vector + a tampered-artifact import must fail
 #   7. audit log — append/verify the hash-chained log (T0-B); conformance vs the frozen vector
 #                  + an edited record must fail at the right seq
+#   8. managed policy — build/sign/verify the policy doc (T0-C); conformance vs the frozen
+#                       vector + a forged policy must be rejected (fail-closed)
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -20,7 +22,7 @@ OUT="$(mktemp /tmp/app-registry.XXXXXX.json)"
 MOUT="$(mktemp /tmp/app-registry-mo.XXXXXX.json)"
 trap 'rm -f "$OUT" "$MOUT"' EXIT
 
-echo "== 1/7 conformance vs frozen #1 test vector =="
+echo "== 1/8 conformance vs frozen #1 test vector =="
 python3 - "$TVDIR" "$SEED" "$KEYID" <<'PY'
 import sys, json, pathlib
 sys.path.insert(0, ".")
@@ -36,7 +38,7 @@ assert re["signature"]["sig"] == signed["signature"]["sig"], \
 print("   OK: jcs + signing reproduce the frozen vector byte-for-byte")
 PY
 
-echo "== 2/7 end-to-end (full) generate -> validate -> verify =="
+echo "== 2/8 end-to-end (full) generate -> validate -> verify =="
 python3 catalog_gen.py \
     --cogs-dir testdata/cogs --artifacts-dir testdata/artifacts \
     --store-id cognitum-official --generated-at 2026-06-10T00:00:00Z \
@@ -55,7 +57,7 @@ assert doom["assets"][0]["filename"] == "freedoom1.wad", doom["assets"][0]
 print(f"   OK: valid + verified ({used}); asset carries filename")
 PY
 
-echo "== 3/7 manifests-only (A3 gate): no built binary =="
+echo "== 3/8 manifests-only (A3 gate): no built binary =="
 python3 catalog_gen.py \
     --cogs-dir testdata/cogs --manifests-only \
     --store-id cognitum-official --generated-at 2026-06-10T00:00:00Z --out "$MOUT"
@@ -70,7 +72,7 @@ assert b.get("pending") is True and "sha256" not in b, b
 print("   OK: validates with binary pending (no artifact needed)")
 PY
 
-echo "== 4/7 asset_entry: filename + required_when flow =="
+echo "== 4/8 asset_entry: filename + required_when flow =="
 python3 - <<'PY'
 import sys
 sys.path.insert(0, ".")
@@ -86,7 +88,7 @@ assert e2["path"] == "cogs/arm/x/y" and "required_when" not in e2, e2
 print("   OK: filename + required_when carried; path preferred; required_when omitted when absent")
 PY
 
-echo "== 5/7 verify_catalog.py (A4 verify-before-upload) =="
+echo "== 5/8 verify_catalog.py (A4 verify-before-upload) =="
 python3 verify_catalog.py "$TVDIR/catalog.signed.json" --key-id "$KEYID" --pubkey-b64 "$PUB"
 python3 - "$TVDIR" > "$MOUT.tamper" <<'PY'
 import sys, json, pathlib
@@ -101,7 +103,7 @@ else
 fi
 rm -f "$MOUT.tamper"
 
-echo "== 6/7 air-gap bundle (T0-A): conformance + export roundtrip + tamper =="
+echo "== 6/8 air-gap bundle (T0-A): conformance + export roundtrip + tamper =="
 python3 - "$TVDIR/bundle" "$SEED" "$KEYID" <<'PY'
 import sys, json, pathlib, shutil, tempfile
 sys.path.insert(0, ".")
@@ -141,7 +143,7 @@ except Exception as e:
 shutil.rmtree(work)
 PY
 
-echo "== 7/7 audit log (T0-B): conformance + append roundtrip + tamper =="
+echo "== 7/8 audit log (T0-B): conformance + append roundtrip + tamper =="
 python3 - "$TVDIR/audit" <<'PY'
 import sys, pathlib, tempfile
 sys.path.insert(0, ".")
@@ -181,6 +183,39 @@ except audit.ChainBreak as e:
     assert e.seq == 1, e
     print(f"   OK: edited record correctly REJECTED at {e}")
 work.unlink()
+PY
+
+echo "== 8/8 managed policy (T0-C): conformance + verify + forged reject =="
+python3 - "$TVDIR/policy" "$SEED" "$KEYID" <<'PY'
+import sys, json, pathlib
+sys.path.insert(0, ".")
+from cogstore import policy, jcs, signing
+tv, seed_hex, kid = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+seed = bytes.fromhex(seed_hex)
+pub = signing.public_key_b64(seed)
+
+# (a) conformance: build_policy + sign reproduce the frozen policy vector byte-for-byte
+p = policy.build_policy(allow_stores=["acme-internal"], deny_public=True,
+                        forced_pins={"doom": "acme-internal"}, allow_user_add_store=False)
+assert jcs.canonical(p) == (tv / "policy.canonical.json").read_bytes(), \
+    "policy JCS differs from the frozen vector"
+assert policy.sign(p, seed=seed, key_id=kid)["signature"]["sig"] == \
+    json.loads((tv / "policy.signed.json").read_text())["signature"]["sig"], \
+    "policy signature differs from the frozen vector"
+print("   OK: build_policy + signing reproduce the frozen policy vector byte-for-byte")
+
+# (b) verify the frozen signed policy against the pinned key
+frozen = json.loads((tv / "policy.signed.json").read_text())
+assert policy.verify_signed(frozen, {kid: pub}) == kid
+print(f"   OK: signed policy verifies under the org key ({kid})")
+
+# (c) forge a signed field -> verify MUST fail (fail-closed acceptance criterion)
+forged = json.loads(json.dumps(frozen)); forged["allow_stores"] = ["evil"]
+try:
+    policy.verify_signed(forged, {kid: pub})
+    print("   UNEXPECTED: forged policy verified"); sys.exit(1)
+except Exception as e:
+    print(f"   OK: forged policy correctly REJECTED (fail-closed: {type(e).__name__})")
 PY
 
 echo "ALL CHECKS PASSED"

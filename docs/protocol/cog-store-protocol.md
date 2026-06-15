@@ -332,3 +332,63 @@ value). Any producer MUST reproduce its `self`/`prev` hashes byte-for-byte. The 
 (`audit.rs`) and the Python oracle (`tools/cogstore/audit.py`) are pinned to it and cross-checked
 by the CI parity job — Rust appends a chain, Python rebuilds it byte-for-byte and verifies it,
 and Rust verifies the Python-rebuilt log.
+
+## 12. Managed-mode policy (`policy.json`) — admin-enforced
+
+A **signed** document an admin distributes to managed devices (MDM, image bake, or inside an
+air-gap bundle) that the resolver enforces (Phase 3, T0-C — see
+[ADR-0003](../adr/ADR-0003-managed-mode-policy.md) and the
+[Phase 3 plan §6](../plans/phase-3-implementation.md)):
+
+```jsonc
+{
+  "schema_version": 1,
+  "managed": true,
+  "allow_stores": ["acme-internal"],          // only these store ids may stay enabled
+  "deny_public": true,                          // force-disable the built-in official store
+  "forced_pins": { "doom": "acme-internal" },  // admin pins; the user layer cannot override
+  "allow_user_add_store": false,                // may a user TOFU-add their own store?
+  "signature": { "key_id": "…", "alg": "ed25519", "sig": "…" }   // org policy key (§7.2)
+}
+```
+
+Signed with the **same** JCS + Ed25519 envelope as the catalog (§7), by an **org policy key**
+provisioned out-of-band — no new crypto. The signature **is** the trust anchor (not TOFU).
+
+### 12.1 Enforcement — a projection in front of the resolver
+
+Policy is applied as a **pre-resolution projection**, leaving the resolution rules (§6 of the
+Phase 2 plan) untouched. `project(stores, pins) -> (stores, pins)`:
+
+1. if `allow_stores` is non-empty, force-disable any store not in it;
+2. if `deny_public`, force-disable the built-in official store (`cognitum-official`);
+3. overlay `forced_pins` onto the user pins (the admin pin wins).
+
+The resolver then runs unchanged. An out-of-policy reference resolves to the **existing** typed
+error (`StoreDisabled` / `NotFound`), which the CLI/seed surfaces as a **policy denial** and
+records as a `policy_deny` audit event (§11). Policy only ever **restricts** — it grants no new
+authority and cannot let one store sign for another's namespace (§8).
+
+### 12.2 Fail-closed
+
+Authority is the signature, so verification is the gate: an **unsigned, forged, wrong-key, or
+schema-invalid** policy is rejected, and a device provisioned `managed:true` **denies** rather
+than reverting to the open default. There is no "policy missing → open" path — that absence is
+the property (§8). `gearbox policy verify` and `policy check` both exit non-zero on any
+verification failure.
+
+### 12.3 CLI & test vector
+
+- **`gearbox policy create --out FILE --sign-seed-hex HEX --key-id ID [--allow-stores a,b]
+  [--deny-public] [--forced-pin cog=store …] [--allow-user-add-store]`** — author + sign.
+- **`gearbox policy verify <policy.json> --key-id ID --pubkey-b64 B64`** — verify against the
+  pinned org key (fail-closed).
+- **`gearbox policy check --policy policy.json --key-id ID --pubkey-b64 B64 --stores stores.json
+  --ref REF [--audit-log FILE --ts TS]`** — verify, then project a device's stores and show what
+  it resolves (or the denial), writing a `policy_deny` record when an `--audit-log` is given.
+
+A frozen vector lives in [`testvectors/policy/`](testvectors/policy/) (`policy.signed.json` +
+`policy.canonical.json`). The Rust crate (`policy.rs`) and the Python oracle
+(`tools/cogstore/policy.py`) are pinned to it and cross-checked **byte-for-byte** by the CI
+parity job — the signing guarantee §7.4 makes for the catalog, extended to the policy document.
+The projection/resolution itself is Rust-only and covered by the crate's tests.

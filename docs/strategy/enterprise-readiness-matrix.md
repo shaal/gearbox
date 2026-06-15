@@ -44,8 +44,8 @@ SBOM / vuln* layer that procurement increasingly checks is unbuilt.
 
 | Capability | Expectation | Status | Notes |
 |---|---|---|---|
-| Managed mode / policy lockdown | Restrict devices to approved stores | **Specced** | Phase 3; resolver already models enabled/priority/pins |
-| Allow / deny store lists | Block the public store on managed fleets | **Specced** | ADR-0001 §4.5, Phase 2 §7 |
+| Managed mode / policy lockdown | Restrict devices to approved stores | **Built** (ref) | `gearbox policy create/verify/check` (T0-C): signed `policy.json` enforced as a projection in front of the resolver, fail-closed; ADR-0003, protocol §12, Rust↔Python parity |
+| Allow / deny store lists | Block the public store on managed fleets | **Built** (ref) | T0-C `allow_stores` + `deny_public`; an out-of-policy ref is denied and `policy_deny`-audited (§11/§12) |
 | Publish approval workflow | Review before a cog ships | **Not started** | — |
 | Capability/permission consent at install | "This cog wants mesh + camera" + diff on update | **Partial** | `[mesh]`/`[api]` declared in cog.toml (cogs); consent UX unbuilt (enhancements §D) |
 | Namespacing (anti-shadowing) | A new store can't impersonate an official cog | **Built** | `resolve.rs` (store/cog, priority, pins) |

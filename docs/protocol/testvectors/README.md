@@ -141,6 +141,44 @@ gearbox audit append --log audit/log.jsonl --ts 2026-06-14T15:00:00Z --event add
 # …verify_catalog, install, policy_deny — see crates/gearbox/tests/audit.rs for the exact fields.
 ```
 
+## Managed policy vector
+
+[`policy/`](policy/) is the frozen contract for the **managed-mode policy** (protocol §12,
+[ADR-0003](../adr/ADR-0003-managed-mode-policy.md), Phase 3 T0-C):
+
+| file | role |
+|---|---|
+| `policy/policy.signed.json` | a managed policy (`allow_stores:[acme-internal]`, `deny_public`, forced pin `doom→acme-internal`), signed with the test key |
+| `policy/policy.canonical.json` | JCS bytes of the policy **without** `signature` (the signing input) |
+
+Signed with the §7.2 envelope by the org policy key (`gearbox-testvector-2026`); its
+`signature.sig` is
+`55FGtdWVZpb4ViTIxsAla9SmWIWUDs3CdHw5Wi07jg4MAZ+wJR5uzKTUaeaI1UuFS4JSYsHjc/xlS6wBzUexCg==`.
+Any producer MUST reproduce those canonical bytes and that signature. The Rust crate
+(`crates/gearbox/tests/policy.rs`) and Python oracle (`tools/cogstore/policy.py`,
+`tools/selftest.sh` case 8) assert it; the CI **parity** job has Rust sign a policy and Python
+re-sign its body and confirm the signatures are byte-identical. A forged/unsigned/wrong-key
+policy is rejected fail-closed (§12.2). The projection + resolution (`allow_stores` / `deny_public`
+/ forced pins → resolver) is Rust-only and covered by `tests/policy.rs`.
+
+```
+# Verify (Python oracle): reproduce the canonical bytes + signature.
+python3 - <<'PY'
+import sys, pathlib; sys.path.insert(0, "tools")
+from cogstore import policy, jcs, signing
+tv = pathlib.Path("docs/protocol/testvectors/policy")
+p = policy.build_policy(allow_stores=["acme-internal"], deny_public=True,
+                        forced_pins={"doom": "acme-internal"})
+assert jcs.canonical(p) == (tv/"policy.canonical.json").read_bytes()
+seed = bytes.fromhex("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")
+print(policy.sign(p, seed=seed, key_id="gearbox-testvector-2026")["signature"]["sig"])
+PY
+
+# Regenerate with the native CLI:
+gearbox policy create --out policy/policy.signed.json --sign-seed-hex <seed> \
+  --key-id gearbox-testvector-2026 --allow-stores acme-internal --deny-public --forced-pin doom=acme-internal
+```
+
 ## Regenerate
 
 Deterministic from the seed above. Re-running the generator yields byte-identical

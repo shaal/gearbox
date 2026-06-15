@@ -1,0 +1,1 @@
+{"allow_stores":["acme-internal"],"allow_user_add_store":false,"deny_public":true,"forced_pins":{"doom":"acme-internal"},"managed":true,"schema_version":1}
