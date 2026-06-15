@@ -96,6 +96,7 @@ examples/bundle-airgap.sh                       # e2e demo: export -> tar -> air
 examples/audit-log.sh                           # e2e demo: append -> verify -> sign head (defeats truncation) -> edit/delete refused (T0-B)
 examples/managed-mode.sh                        # e2e demo: sign policy -> enforce (allow/deny + audit) -> forgery refused (T0-C)
 examples/attestation.sh                         # e2e demo: sign provenance+SBOM -> verify sig + digest binding -> swap/forgery refused
+examples/publish-store.sh                        # operator: stage a self-hostable HTTPS store (store.json + catalog + sha256-verified artifacts [+ attest/audit])
 ```
 
 Planned: a reference store server; multi-store (Phase 2). The device-side verifier lives in
