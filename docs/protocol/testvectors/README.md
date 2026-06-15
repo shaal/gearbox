@@ -179,6 +179,40 @@ gearbox policy create --out policy/policy.signed.json --sign-seed-hex <seed> \
   --key-id gearbox-testvector-2026 --allow-stores acme-internal --deny-public --forced-pin doom=acme-internal
 ```
 
+## Attestation vector
+
+[`attestation/`](attestation/) is the frozen contract for the **provenance + SBOM attestation**
+(protocol §13): a signed `attestation.json` binding the `doom` binary
+(`sha256 238a6e0…`) to its source provenance and a one-package SBOM (FreeDoom). Signed with the
+§7.2 envelope by `gearbox-testvector-2026`; its `signature.sig` is
+`j/eQWRTmxAucAG170sHM75g9PeRAz9dsWt7jr5KhcIc6UxPDT+EZh/+tdF1bgntSWSIwFc3hIpHMUgA666AiDA==`.
+
+Any producer MUST reproduce `attestation.canonical.json` byte-for-byte and that signature. The
+Rust crate (`crates/gearbox/tests/attest.rs`) and Python oracle (`tools/cogstore/attest.py`,
+`tools/selftest.sh` case 9) assert it; the CI **parity** job has Rust sign an attestation and
+Python re-sign its body byte-identical + verify. Two guards: tampering any field breaks the
+**signature**; the recorded `subject.sha256` is checked against the real artifact bytes (the
+**digest binding**, verifiable against `tools/testdata/artifacts/cogs/arm/cog-doom-arm`).
+
+```
+# Verify (Python oracle): reproduce the canonical bytes + signature, then check the binding.
+python3 - <<'PY'
+import sys, pathlib; sys.path.insert(0, "tools")
+from cogstore import attest, jcs, signing
+tv = pathlib.Path("docs/protocol/testvectors/attestation")
+a = attest.build_attestation(
+    {"cog":"doom","version":"0.1.0","artifact":"cogs/arm/cog-doom-arm",
+     "sha256":"238a6e038d11d2b9851396b8ec167ad2f5c8724525100473c2a3f06c9ea43561"},
+    {"builder":"cogs-ci","source_repo":"github.com/cognitum-one/cogs",
+     "source_commit":"abc1234def5678","built_at":"2026-06-10T00:00:00Z"},
+    [{"name":"freedoom","version":"0.13.0","license":"BSD-3-Clause",
+      "sha256":"7323bcc168c5a45ff10749b339960e98314740a734c30d4b9f3337001f9e703d"}])
+assert jcs.canonical(a) == (tv/"attestation.canonical.json").read_bytes()
+seed = bytes.fromhex("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")
+print(attest.sign(a, seed=seed, key_id="gearbox-testvector-2026")["signature"]["sig"])
+PY
+```
+
 ## Regenerate
 
 Deterministic from the seed above. Re-running the generator yields byte-identical

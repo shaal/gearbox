@@ -17,7 +17,7 @@ use std::process::exit;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde_json::Value;
 
-use gearbox::{audit, bundle, catalog, policy, resolve, server, signing, store};
+use gearbox::{attest, audit, bundle, catalog, policy, resolve, server, signing, store};
 
 const USAGE: &str = "\
 usage:
@@ -38,6 +38,10 @@ usage:
   gearbox policy verify <policy.json> --key-id ID --pubkey-b64 B64
   gearbox policy check  --policy policy.json --key-id ID --pubkey-b64 B64 \\
                   --stores stores.json --ref REF [--audit-log FILE --ts TS]
+  gearbox attest create --artifact FILE --cog ID --version VER --builder B \\
+                  --source-repo R --source-commit C --built-at TS [--artifact-path PATH] \\
+                  [--package name=version=license=sha256 ...] --sign-seed-hex HEX --key-id ID --out FILE
+  gearbox attest verify <attestation.json> --key-id ID --pubkey-b64 B64 [--artifact FILE]
   gearbox serve   --dir DIR [--port N] [--auth-token TOKEN]";
 
 fn main() {
@@ -68,6 +72,14 @@ fn main() {
             Some("create") => cmd_policy_create(&args[3..]),
             Some("verify") => cmd_policy_verify(&args[3..]),
             Some("check") => cmd_policy_check(&args[3..]),
+            _ => {
+                eprintln!("{USAGE}");
+                2
+            }
+        },
+        Some("attest") => match args.get(2).map(String::as_str) {
+            Some("create") => cmd_attest_create(&args[3..]),
+            Some("verify") => cmd_attest_verify(&args[3..]),
             _ => {
                 eprintln!("{USAGE}");
                 2
@@ -803,6 +815,191 @@ fn cmd_policy_check(args: &[String]) -> i32 {
             1
         }
     }
+}
+
+fn cmd_attest_create(args: &[String]) -> i32 {
+    // `--package` repeats; pull every value out before parsing the single-valued flags.
+    let mut packages: Vec<String> = Vec::new();
+    let mut rest: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == "--package" {
+            match args.get(i + 1) {
+                Some(v) => {
+                    packages.push(v.clone());
+                    i += 2;
+                }
+                None => {
+                    eprintln!("--package needs a name=version=license=sha256");
+                    return 2;
+                }
+            }
+        } else {
+            rest.push(args[i].clone());
+            i += 1;
+        }
+    }
+    let (kv, _, _) = match parse_flags(&rest, &[]) {
+        Ok(x) => x,
+        Err(e) => {
+            eprintln!("{e}\n{USAGE}");
+            return 2;
+        }
+    };
+    let (
+        Some(artifact),
+        Some(cog),
+        Some(version),
+        Some(builder),
+        Some(source_repo),
+        Some(source_commit),
+        Some(built_at),
+        Some(out),
+        Some(seed_hex),
+        Some(key_id),
+    ) = (
+        kv.get("--artifact"),
+        kv.get("--cog"),
+        kv.get("--version"),
+        kv.get("--builder"),
+        kv.get("--source-repo"),
+        kv.get("--source-commit"),
+        kv.get("--built-at"),
+        kv.get("--out"),
+        kv.get("--sign-seed-hex"),
+        kv.get("--key-id"),
+    )
+    else {
+        eprintln!("usage: gearbox attest create --artifact FILE --cog ID --version VER --builder B --source-repo R --source-commit C --built-at TS [--artifact-path PATH] [--package n=v=l=sha ...] --sign-seed-hex HEX --key-id ID --out FILE");
+        return 2;
+    };
+
+    let bytes = match fs::read(artifact) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("FAIL: read {artifact}: {e}");
+            return 1;
+        }
+    };
+    let artifact_sha = attest::sha256_hex(&bytes);
+    // Default the recorded subject path to the artifact file's basename if not given explicitly.
+    let artifact_path = kv.get("--artifact-path").cloned().unwrap_or_else(|| {
+        Path::new(artifact)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(artifact)
+            .to_string()
+    });
+    let pkgs = match attest::parse_packages(&packages) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("FAIL: {e}");
+            return 2;
+        }
+    };
+    let seed = match decode_seed(seed_hex) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("FAIL: {e}");
+            return 2;
+        }
+    };
+    let doc = attest::build_attestation(
+        &attest::Subject {
+            cog,
+            version,
+            artifact: &artifact_path,
+            sha256: &artifact_sha,
+        },
+        &attest::Provenance {
+            builder,
+            source_repo,
+            source_commit,
+            built_at,
+        },
+        &pkgs,
+    );
+    let result = attest::validate(&doc)
+        .and_then(|()| signing::sign_document(&doc, &seed, key_id))
+        .and_then(|signed| write_json(out, &signed));
+    match result {
+        Ok(()) => {
+            println!(
+                "wrote {out} — attestation for {cog}@{version} ({artifact_sha}), {} package(s), signed by {key_id}",
+                pkgs.len()
+            );
+            0
+        }
+        Err(e) => {
+            eprintln!("FAIL: {e}");
+            1
+        }
+    }
+}
+
+fn cmd_attest_verify(args: &[String]) -> i32 {
+    let (kv, _, pos) = match parse_flags(args, &[]) {
+        Ok(x) => x,
+        Err(e) => {
+            eprintln!("{e}\n{USAGE}");
+            return 2;
+        }
+    };
+    let Some(path) = pos.first().or_else(|| kv.get("--in")) else {
+        eprintln!("usage: gearbox attest verify <attestation.json> --key-id ID --pubkey-b64 B64 [--artifact FILE]");
+        return 2;
+    };
+    let trust = match trust_from_args(&kv) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("{e}");
+            return 2;
+        }
+    };
+    let doc = match read_json(path) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("FAIL: {e}");
+            return 1;
+        }
+    };
+    let kid = match attest::verify(&doc, &trust) {
+        Ok(k) => k,
+        Err(e) => {
+            eprintln!("FAIL: {e}");
+            return 1;
+        }
+    };
+    // The digest binding is only checked when the artifact bytes are provided.
+    let bound = match kv.get("--artifact") {
+        Some(artifact) => {
+            let bytes = match fs::read(artifact) {
+                Ok(b) => b,
+                Err(e) => {
+                    eprintln!("FAIL: read {artifact}: {e}");
+                    return 1;
+                }
+            };
+            if let Err(e) = attest::check_artifact(&doc, &bytes) {
+                eprintln!("FAIL: {e}");
+                return 1;
+            }
+            true
+        }
+        None => false,
+    };
+    let cog = doc["subject"]["cog"].as_str().unwrap_or("?");
+    let version = doc["subject"]["version"].as_str().unwrap_or("?");
+    let n = doc["sbom"]["packages"].as_array().map_or(0, |a| a.len());
+    println!(
+        "OK: attestation for {cog}@{version} verified by {kid} — {n} package(s){}",
+        if bound {
+            "; artifact digest matches"
+        } else {
+            "; artifact not provided (digest binding unchecked)"
+        }
+    );
+    0
 }
 
 fn cmd_serve(args: &[String]) -> i32 {

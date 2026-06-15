@@ -11,6 +11,8 @@
 #                  + an edited record must fail at the right seq
 #   8. managed policy — build/sign/verify the policy doc (T0-C); conformance vs the frozen
 #                       vector + a forged policy must be rejected (fail-closed)
+#   9. attestation — build/sign/verify the provenance+SBOM doc; conformance vs the frozen
+#                    vector + a swapped artifact and a tampered field must both fail
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -22,7 +24,7 @@ OUT="$(mktemp /tmp/app-registry.XXXXXX.json)"
 MOUT="$(mktemp /tmp/app-registry-mo.XXXXXX.json)"
 trap 'rm -f "$OUT" "$MOUT"' EXIT
 
-echo "== 1/8 conformance vs frozen #1 test vector =="
+echo "== 1/9 conformance vs frozen #1 test vector =="
 python3 - "$TVDIR" "$SEED" "$KEYID" <<'PY'
 import sys, json, pathlib
 sys.path.insert(0, ".")
@@ -38,7 +40,7 @@ assert re["signature"]["sig"] == signed["signature"]["sig"], \
 print("   OK: jcs + signing reproduce the frozen vector byte-for-byte")
 PY
 
-echo "== 2/8 end-to-end (full) generate -> validate -> verify =="
+echo "== 2/9 end-to-end (full) generate -> validate -> verify =="
 python3 catalog_gen.py \
     --cogs-dir testdata/cogs --artifacts-dir testdata/artifacts \
     --store-id cognitum-official --generated-at 2026-06-10T00:00:00Z \
@@ -57,7 +59,7 @@ assert doom["assets"][0]["filename"] == "freedoom1.wad", doom["assets"][0]
 print(f"   OK: valid + verified ({used}); asset carries filename")
 PY
 
-echo "== 3/8 manifests-only (A3 gate): no built binary =="
+echo "== 3/9 manifests-only (A3 gate): no built binary =="
 python3 catalog_gen.py \
     --cogs-dir testdata/cogs --manifests-only \
     --store-id cognitum-official --generated-at 2026-06-10T00:00:00Z --out "$MOUT"
@@ -72,7 +74,7 @@ assert b.get("pending") is True and "sha256" not in b, b
 print("   OK: validates with binary pending (no artifact needed)")
 PY
 
-echo "== 4/8 asset_entry: filename + required_when flow =="
+echo "== 4/9 asset_entry: filename + required_when flow =="
 python3 - <<'PY'
 import sys
 sys.path.insert(0, ".")
@@ -88,7 +90,7 @@ assert e2["path"] == "cogs/arm/x/y" and "required_when" not in e2, e2
 print("   OK: filename + required_when carried; path preferred; required_when omitted when absent")
 PY
 
-echo "== 5/8 verify_catalog.py (A4 verify-before-upload) =="
+echo "== 5/9 verify_catalog.py (A4 verify-before-upload) =="
 python3 verify_catalog.py "$TVDIR/catalog.signed.json" --key-id "$KEYID" --pubkey-b64 "$PUB"
 python3 - "$TVDIR" > "$MOUT.tamper" <<'PY'
 import sys, json, pathlib
@@ -103,7 +105,7 @@ else
 fi
 rm -f "$MOUT.tamper"
 
-echo "== 6/8 air-gap bundle (T0-A): conformance + export roundtrip + tamper =="
+echo "== 6/9 air-gap bundle (T0-A): conformance + export roundtrip + tamper =="
 python3 - "$TVDIR/bundle" "$SEED" "$KEYID" <<'PY'
 import sys, json, pathlib, shutil, tempfile
 sys.path.insert(0, ".")
@@ -143,7 +145,7 @@ except Exception as e:
 shutil.rmtree(work)
 PY
 
-echo "== 7/8 audit log (T0-B): conformance + append roundtrip + tamper =="
+echo "== 7/9 audit log (T0-B): conformance + append roundtrip + tamper =="
 python3 - "$TVDIR/audit" <<'PY'
 import sys, pathlib, tempfile
 sys.path.insert(0, ".")
@@ -185,7 +187,7 @@ except audit.ChainBreak as e:
 work.unlink()
 PY
 
-echo "== 8/8 managed policy (T0-C): conformance + verify + forged reject =="
+echo "== 8/9 managed policy (T0-C): conformance + verify + forged reject =="
 python3 - "$TVDIR/policy" "$SEED" "$KEYID" <<'PY'
 import sys, json, pathlib
 sys.path.insert(0, ".")
@@ -216,6 +218,50 @@ try:
     print("   UNEXPECTED: forged policy verified"); sys.exit(1)
 except Exception as e:
     print(f"   OK: forged policy correctly REJECTED (fail-closed: {type(e).__name__})")
+PY
+
+echo "== 9/9 attestation: conformance + verify + swapped-artifact / tampered-field reject =="
+python3 - "$TVDIR/attestation" "$SEED" "$KEYID" <<'PY'
+import sys, json, pathlib
+sys.path.insert(0, ".")
+from cogstore import attest, jcs, signing
+tv, seed_hex, kid = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+seed = bytes.fromhex(seed_hex); pub = signing.public_key_b64(seed)
+
+# (a) conformance: build + sign reproduce the frozen attestation vector byte-for-byte
+subject = {"cog": "doom", "version": "0.1.0", "artifact": "cogs/arm/cog-doom-arm",
+           "sha256": "238a6e038d11d2b9851396b8ec167ad2f5c8724525100473c2a3f06c9ea43561"}
+prov = {"builder": "cogs-ci", "source_repo": "github.com/cognitum-one/cogs",
+        "source_commit": "abc1234def5678", "built_at": "2026-06-10T00:00:00Z"}
+pkgs = [{"name": "freedoom", "version": "0.13.0", "license": "BSD-3-Clause",
+         "sha256": "7323bcc168c5a45ff10749b339960e98314740a734c30d4b9f3337001f9e703d"}]
+a = attest.build_attestation(subject, prov, pkgs)
+assert jcs.canonical(a) == (tv / "attestation.canonical.json").read_bytes(), \
+    "attestation JCS differs from the frozen vector"
+assert attest.sign(a, seed=seed, key_id=kid)["signature"]["sig"] == \
+    json.loads((tv / "attestation.signed.json").read_text())["signature"]["sig"], \
+    "attestation signature differs from the frozen vector"
+print("   OK: build + signing reproduce the frozen attestation vector byte-for-byte")
+
+# (b) verify the signed attestation + its artifact-digest binding
+frozen = json.loads((tv / "attestation.signed.json").read_text())
+assert attest.verify(frozen, {kid: pub}) == kid
+art = pathlib.Path("testdata/artifacts/cogs/arm/cog-doom-arm").read_bytes()
+attest.check_artifact(frozen, art)
+print("   OK: signature + artifact digest binding verify")
+
+# (c) a swapped artifact breaks the binding; a tampered field breaks the signature
+try:
+    attest.check_artifact(frozen, art + b"X")
+    print("   UNEXPECTED: swapped artifact accepted"); sys.exit(1)
+except ValueError:
+    print("   OK: swapped artifact REJECTED (digest binding)")
+bad = json.loads(json.dumps(frozen)); bad["provenance"]["builder"] = "evil"
+try:
+    attest.verify(bad, {kid: pub})
+    print("   UNEXPECTED: tampered provenance verified"); sys.exit(1)
+except Exception as e:
+    print(f"   OK: tampered provenance REJECTED (signature: {type(e).__name__})")
 PY
 
 echo "ALL CHECKS PASSED"
