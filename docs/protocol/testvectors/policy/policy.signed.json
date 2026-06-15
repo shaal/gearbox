@@ -1,0 +1,17 @@
+{
+  "allow_stores": [
+    "acme-internal"
+  ],
+  "allow_user_add_store": false,
+  "deny_public": true,
+  "forced_pins": {
+    "doom": "acme-internal"
+  },
+  "managed": true,
+  "schema_version": 1,
+  "signature": {
+    "alg": "ed25519",
+    "key_id": "gearbox-testvector-2026",
+    "sig": "55FGtdWVZpb4ViTIxsAla9SmWIWUDs3CdHw5Wi07jg4MAZ+wJR5uzKTUaeaI1UuFS4JSYsHjc/xlS6wBzUexCg=="
+  }
+}

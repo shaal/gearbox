@@ -17,7 +17,7 @@ use std::process::exit;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde_json::Value;
 
-use gearbox::{audit, bundle, catalog, server, signing, store};
+use gearbox::{audit, bundle, catalog, policy, resolve, server, signing, store};
 
 const USAGE: &str = "\
 usage:
@@ -33,6 +33,11 @@ usage:
   gearbox import  <bundle-dir> [--expect-fingerprint HEX]
   gearbox audit append --log FILE --ts TS --event EVENT --subject SUBJ [--detail k=v ...]
   gearbox audit verify --log FILE
+  gearbox policy create --out FILE --sign-seed-hex HEX --key-id ID \\
+                  [--allow-stores a,b] [--deny-public] [--forced-pin cog=store ...] [--allow-user-add-store]
+  gearbox policy verify <policy.json> --key-id ID --pubkey-b64 B64
+  gearbox policy check  --policy policy.json --key-id ID --pubkey-b64 B64 \\
+                  --stores stores.json --ref REF [--audit-log FILE --ts TS]
   gearbox serve   --dir DIR [--port N] [--auth-token TOKEN]";
 
 fn main() {
@@ -54,6 +59,15 @@ fn main() {
         Some("audit") => match args.get(2).map(String::as_str) {
             Some("append") => cmd_audit_append(&args[3..]),
             Some("verify") => cmd_audit_verify(&args[3..]),
+            _ => {
+                eprintln!("{USAGE}");
+                2
+            }
+        },
+        Some("policy") => match args.get(2).map(String::as_str) {
+            Some("create") => cmd_policy_create(&args[3..]),
+            Some("verify") => cmd_policy_verify(&args[3..]),
+            Some("check") => cmd_policy_check(&args[3..]),
             _ => {
                 eprintln!("{USAGE}");
                 2
@@ -540,6 +554,252 @@ fn cmd_audit_verify(args: &[String]) -> i32 {
         }
         Err(brk) => {
             eprintln!("FAIL: audit chain broken at {brk}");
+            1
+        }
+    }
+}
+
+/// Build a single-key trust store from `--key-id` + `--pubkey-b64` (the pinned org policy key).
+fn trust_from_args(kv: &HashMap<String, String>) -> Result<signing::TrustStore, String> {
+    let (Some(key_id), Some(pubkey_b64)) = (kv.get("--key-id"), kv.get("--pubkey-b64")) else {
+        return Err("provide --key-id and --pubkey-b64 (the pinned org policy key)".into());
+    };
+    let pk: [u8; 32] = STANDARD
+        .decode(pubkey_b64)
+        .ok()
+        .and_then(|v| v.try_into().ok())
+        .ok_or("--pubkey-b64 must be base64 of exactly 32 bytes")?;
+    Ok(HashMap::from([(key_id.clone(), pk)]))
+}
+
+fn cmd_policy_create(args: &[String]) -> i32 {
+    // `--forced-pin` repeats; pull every pair out before parsing the single-valued flags.
+    let mut pins: Vec<String> = Vec::new();
+    let mut rest: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == "--forced-pin" {
+            match args.get(i + 1) {
+                Some(v) => {
+                    pins.push(v.clone());
+                    i += 2;
+                }
+                None => {
+                    eprintln!("--forced-pin needs a cog=store");
+                    return 2;
+                }
+            }
+        } else {
+            rest.push(args[i].clone());
+            i += 1;
+        }
+    }
+    let (kv, flags, _) = match parse_flags(&rest, &["--deny-public", "--allow-user-add-store"]) {
+        Ok(x) => x,
+        Err(e) => {
+            eprintln!("{e}\n{USAGE}");
+            return 2;
+        }
+    };
+    let (Some(out), Some(seed_hex), Some(key_id)) = (
+        kv.get("--out"),
+        kv.get("--sign-seed-hex"),
+        kv.get("--key-id"),
+    ) else {
+        eprintln!("usage: gearbox policy create --out FILE --sign-seed-hex HEX --key-id ID [--allow-stores a,b] [--deny-public] [--forced-pin cog=store ...] [--allow-user-add-store]");
+        return 2;
+    };
+    let allow_stores: Vec<String> = kv
+        .get("--allow-stores")
+        .map(|s| {
+            s.split(',')
+                .filter(|t| !t.is_empty())
+                .map(String::from)
+                .collect()
+        })
+        .unwrap_or_default();
+    let forced_pins = match policy::parse_forced_pins(&pins) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("FAIL: {e}");
+            return 2;
+        }
+    };
+    let doc = policy::build_policy(
+        &allow_stores,
+        flags.contains("--deny-public"),
+        &forced_pins,
+        flags.contains("--allow-user-add-store"),
+    );
+    let seed = match decode_seed(seed_hex) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("FAIL: {e}");
+            return 2;
+        }
+    };
+    let result = signing::sign_document(&doc, &seed, key_id)
+        .and_then(|signed| policy::validate(&signed).map(|()| signed))
+        .and_then(|signed| write_json(out, &signed));
+    match result {
+        Ok(()) => {
+            println!("wrote {out} — managed policy signed by {key_id}");
+            0
+        }
+        Err(e) => {
+            eprintln!("FAIL: {e}");
+            1
+        }
+    }
+}
+
+fn cmd_policy_verify(args: &[String]) -> i32 {
+    let (kv, _, pos) = match parse_flags(args, &[]) {
+        Ok(x) => x,
+        Err(e) => {
+            eprintln!("{e}\n{USAGE}");
+            return 2;
+        }
+    };
+    let Some(path) = pos.first().or_else(|| kv.get("--in")) else {
+        eprintln!("usage: gearbox policy verify <policy.json> --key-id ID --pubkey-b64 B64");
+        return 2;
+    };
+    let trust = match trust_from_args(&kv) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("{e}");
+            return 2;
+        }
+    };
+    let doc = match read_json(path) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("FAIL: {e}");
+            return 1;
+        }
+    };
+    match policy::verify_signed(&doc, &trust) {
+        Ok(kid) => {
+            let p = policy::Policy::from_json(&doc).unwrap_or(policy::Policy {
+                managed: false,
+                allow_stores: vec![],
+                deny_public: false,
+                forced_pins: HashMap::new(),
+                allow_user_add_store: false,
+            });
+            println!(
+                "OK: policy verified by {kid} — managed={}, allow_stores={:?}, deny_public={}, forced_pins={}, allow_user_add_store={}",
+                p.managed,
+                p.allow_stores,
+                p.deny_public,
+                p.forced_pins.len(),
+                p.allow_user_add_store
+            );
+            0
+        }
+        Err(e) => {
+            eprintln!("FAIL: policy rejected (fail-closed): {e}");
+            1
+        }
+    }
+}
+
+fn cmd_policy_check(args: &[String]) -> i32 {
+    let (kv, _, _) = match parse_flags(args, &[]) {
+        Ok(x) => x,
+        Err(e) => {
+            eprintln!("{e}\n{USAGE}");
+            return 2;
+        }
+    };
+    let (Some(policy_path), Some(stores_path), Some(reference)) =
+        (kv.get("--policy"), kv.get("--stores"), kv.get("--ref"))
+    else {
+        eprintln!("usage: gearbox policy check --policy policy.json --key-id ID --pubkey-b64 B64 --stores stores.json --ref REF [--audit-log FILE --ts TS]");
+        return 2;
+    };
+    let trust = match trust_from_args(&kv) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("{e}");
+            return 2;
+        }
+    };
+
+    // Fail-closed: the policy must verify against the pinned key before we enforce anything.
+    let policy_doc = match read_json(policy_path) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("FAIL: policy rejected (fail-closed): {e}");
+            return 1;
+        }
+    };
+    if let Err(e) = policy::verify_signed(&policy_doc, &trust) {
+        eprintln!("FAIL: policy rejected (fail-closed): {e}");
+        return 1;
+    }
+    let pol = match policy::Policy::from_json(&policy_doc) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("FAIL: {e}");
+            return 1;
+        }
+    };
+    if !pol.managed {
+        eprintln!("FAIL: policy is not managed (managed=false); nothing to enforce");
+        return 1;
+    }
+
+    let stores_doc = match read_json(stores_path) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("FAIL: {e}");
+            return 1;
+        }
+    };
+    let (stores, offerings, pins) = match policy::parse_device_stores(&stores_doc) {
+        Ok(x) => x,
+        Err(e) => {
+            eprintln!("FAIL: {e}");
+            return 1;
+        }
+    };
+
+    // Apply the policy projection in front of the (unchanged) resolver.
+    let (stores, pins) = pol.project(stores, pins);
+    let resolver = match resolve::Resolver::new(stores, offerings, pins) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("FAIL: {e}");
+            return 1;
+        }
+    };
+
+    match resolver.resolve(reference) {
+        Ok(res) => {
+            println!(
+                "ALLOWED: {reference} -> {}/{} ({:?})",
+                res.store_id, res.cog_id, res.reason
+            );
+            0
+        }
+        Err(e) => {
+            println!("DENIED (policy): {reference} — {e}");
+            // Record a policy_deny audit record when an --audit-log is provided (T0-B §5).
+            if let (Some(log), Some(ts)) = (kv.get("--audit-log"), kv.get("--ts")) {
+                let detail =
+                    audit::parse_details(&[format!("reason={e}"), "result=deny".to_string()])
+                        .unwrap_or_default();
+                match audit::append(Path::new(log), ts, "policy_deny", reference, detail) {
+                    Ok(rec) => println!(
+                        "    audited: policy_deny seq {} -> {}",
+                        rec.get("seq").and_then(Value::as_i64).unwrap_or(-1),
+                        log
+                    ),
+                    Err(e) => eprintln!("    WARN: failed to write audit record: {e}"),
+                }
+            }
             1
         }
     }

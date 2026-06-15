@@ -8,7 +8,7 @@ matching the Python `tools/` reference and pinned to the frozen test vectors in
 ## Build / test / run
 
 ```bash
-cargo test                                   # 43 tests (jcs/verify + catalog + store-info + server + resolve + bundle + audit)
+cargo test                                   # 54 tests (jcs/verify + catalog + store-info + server + resolve + bundle + audit + policy)
 
 gearbox catalog --cogs-dir DIR (--artifacts-dir DIR | --manifests-only) \
                 --store-id ID --generated-at TS --out FILE [--sign-seed-hex HEX --key-id ID]
@@ -22,6 +22,11 @@ gearbox export  --catalog app-registry.json --store-info store.json --artifacts-
 gearbox import  <bundle-dir> [--expect-fingerprint HEX]      # verify + install via file:// (T0-A)
 gearbox audit append --log FILE --ts TS --event EVENT --subject SUBJ [--detail k=v ...]  # T0-B
 gearbox audit verify --log FILE              # recompute the hash chain; fail at the first bad seq
+gearbox policy create --out FILE --sign-seed-hex HEX --key-id ID \           # T0-C managed mode
+                [--allow-stores a,b] [--deny-public] [--forced-pin cog=store ...] [--allow-user-add-store]
+gearbox policy verify <policy.json> --key-id ID --pubkey-b64 B64   # fail-closed signature gate
+gearbox policy check  --policy policy.json --key-id ID --pubkey-b64 B64 --stores stores.json --ref REF \
+                [--audit-log FILE --ts TS]   # dry-run: what a managed device resolves (or denies + audits)
 gearbox serve   --dir DIR [--port N] [--auth-token TOKEN]   # reference store server (dev)
 ```
 
@@ -36,8 +41,9 @@ src/resolve.rs   multi-store resolution: namespacing / priority / pins (Phase 2 
 src/server.rs    minimal dependency-free HTTP store server (dev): store.json + catalog + artifacts
 src/bundle.rs    air-gap bundle (Phase 3 T0-A): export/import a signed file://-installable store (§10)
 src/audit.rs     audit log (Phase 3 T0-B): append/verify a hash-chained, tamper-evident JSONL log (§11)
-src/main.rs      `gearbox` CLI: catalog / sign / verify / store-info / export / import / audit / serve
-tests/           vector.rs · catalog.rs · store.rs · server.rs · resolve.rs · bundle.rs · audit.rs
+src/policy.rs    managed-mode policy (Phase 3 T0-C): signed policy.json + projection in front of resolve (§12)
+src/main.rs      `gearbox` CLI: catalog / sign / verify / store-info / export / import / audit / policy / serve
+tests/           vector.rs · catalog.rs · store.rs · server.rs · resolve.rs · bundle.rs · audit.rs · policy.rs
 ```
 
 End-to-end demos:
@@ -50,6 +56,9 @@ End-to-end demos:
 - [`examples/audit-log.sh`](../../examples/audit-log.sh) records a trust-affecting sequence into a
   hash-chained log, verifies it offline, then shows an edited and a deleted record both being
   caught at the right `seq`.
+- [`examples/managed-mode.sh`](../../examples/managed-mode.sh) signs a managed policy, enforces it
+  (ACME allowed, public store denied + `policy_deny`-audited), and shows a forged policy refused
+  fail-closed.
 
 ## Conformance & cross-implementation parity
 
@@ -69,8 +78,8 @@ and gated by the vectors + parity.
 
 Full parity with the Python tools (generate / sign / verify), plus `store-info` (Phase 2 TOFU
 identity), `serve` (a dependency-free reference store server), `resolve` (multi-store
-namespacing / priority / pins), `export`/`import` (Phase 3 T0-A air-gap bundle), and `audit`
-(Phase 3 T0-B hash-chained event log) — both with Python parity oracles in `tools/cogstore/`.
-Next (Phase 3): managed-mode policy (T0-C, → ADR-0003). Dependencies: `serde_json`,
-`ed25519-dalek`, `base64`, `toml`, `sha2`, `hex` — the server, resolver, bundle, and audit log
-add none (std-only); no `clap`.
+namespacing / priority / pins), `export`/`import` (Phase 3 T0-A air-gap bundle), `audit`
+(Phase 3 T0-B hash-chained event log), and `policy` (Phase 3 T0-C managed mode) — the signing
+paths all have Python parity oracles in `tools/cogstore/`. Tier 0 is complete. Dependencies:
+`serde_json`, `ed25519-dalek`, `base64`, `toml`, `sha2`, `hex` — the server, resolver, bundle,
+audit log, and policy add none (std-only); no `clap`.

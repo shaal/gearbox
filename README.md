@@ -89,11 +89,12 @@ docs/
   strategy/   enterprise-readiness-matrix.md    # honest capability status + Tier 0/1/2 roadmap
 tools/                                          # Python reference catalog generator + signer (gearbox#2)
   catalog_gen.py · verify_catalog.py · cogstore/ · testdata/ · selftest.sh
-crates/gearbox/                                 # native Rust reference (gearbox#3): catalog + store-info + serve + air-gap bundle + audit log
-  src/ (jcs · signing · catalog · store · resolve · server · bundle · audit · CLI) · tests/ — byte-for-byte vs the vectors + Python parity
+crates/gearbox/                                 # native Rust reference (gearbox#3): catalog + store-info + serve + air-gap bundle + audit log + managed policy
+  src/ (jcs · signing · catalog · store · resolve · server · bundle · audit · policy · CLI) · tests/ — byte-for-byte vs the vectors + Python parity
 examples/store-loop.sh                          # e2e demo: serve -> TOFU -> verify catalog -> fetch+hash artifact
 examples/bundle-airgap.sh                       # e2e demo: export -> tar -> air-gap import via file:// -> tamper refused (T0-A)
 examples/audit-log.sh                           # e2e demo: append -> verify hash-chained log -> edit/delete refused (T0-B)
+examples/managed-mode.sh                        # e2e demo: sign policy -> enforce (allow/deny + audit) -> forgery refused (T0-C)
 ```
 
 Planned: a reference store server; multi-store (Phase 2). The device-side verifier lives in

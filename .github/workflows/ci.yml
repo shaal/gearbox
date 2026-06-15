@@ -144,6 +144,22 @@ jobs:
           # ...then Rust verifies the Python-rebuilt log (Python -> Rust).
           "$BIN" audit verify --log "$LOG".rebuilt.jsonl
 
+      - name: Managed policy — Rust signs, Python verifies the same signature
+        run: |
+          set -euo pipefail
+          BIN=crates/gearbox/target/debug/gearbox
+          PUB=$(cd tools && python3 -c "from cogstore.signing import public_key_b64; \
+            print(public_key_b64(bytes.fromhex('${TV_SEED}')))")
+
+          # Rust authors + signs a managed policy...
+          "$BIN" policy create --out policy.json --sign-seed-hex "${TV_SEED}" --key-id "${TV_KEY_ID}" \
+            --allow-stores acme-internal --deny-public --forced-pin doom=acme-internal
+          # ...Python re-signs the same document body and the signatures must be byte-identical,
+          #    and Python verifies the Rust-signed policy (Rust signs -> Python verifies).
+          python3 tools/policy_parity.py policy.json
+          # Rust verifies its own signed policy too (fail-closed gate).
+          "$BIN" policy verify policy.json --key-id "${TV_KEY_ID}" --pubkey-b64 "$PUB"
+
   # ---- Required: style + lints. ----
   lint:
     name: Lint (fmt + clippy)

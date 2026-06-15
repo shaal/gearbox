@@ -10,6 +10,7 @@ pub mod audit;
 pub mod bundle;
 pub mod catalog;
 pub mod jcs;
+pub mod policy;
 pub mod resolve;
 pub mod server;
 pub mod signing;
