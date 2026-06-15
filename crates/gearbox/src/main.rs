@@ -17,7 +17,7 @@ use std::process::exit;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde_json::Value;
 
-use gearbox::{catalog, server, signing, store};
+use gearbox::{bundle, catalog, server, signing, store};
 
 const USAGE: &str = "\
 usage:
@@ -28,6 +28,9 @@ usage:
   gearbox store-info create --store-id ID --name NAME [--description D] --catalog-url URL \\
                   --key-id KID (--sign-seed-hex HEX | --pubkey-b64 B64) --out FILE
   gearbox store-info verify <store.json>
+  gearbox export  --catalog app-registry.json --store-info store.json --artifacts-dir DIR \\
+                  --out BUNDLE --generated-at TS [--sign-seed-hex HEX --key-id ID]
+  gearbox import  <bundle-dir> [--expect-fingerprint HEX]
   gearbox serve   --dir DIR [--port N] [--auth-token TOKEN]";
 
 fn main() {
@@ -44,6 +47,8 @@ fn main() {
                 2
             }
         },
+        Some("export") => cmd_export(&args[2..]),
+        Some("import") => cmd_import(&args[2..]),
         Some("serve") => cmd_serve(&args[2..]),
         _ => {
             eprintln!("{USAGE}");
@@ -336,6 +341,97 @@ fn cmd_store_create(args: &[String]) -> i32 {
         if signed { "self-signed" } else { "unsigned" }
     );
     0
+}
+
+fn cmd_export(args: &[String]) -> i32 {
+    let (kv, _, _) = match parse_flags(args, &[]) {
+        Ok(x) => x,
+        Err(e) => {
+            eprintln!("{e}\n{USAGE}");
+            return 2;
+        }
+    };
+    let (Some(catalog), Some(store_info), Some(artifacts_dir), Some(out), Some(generated_at)) = (
+        kv.get("--catalog"),
+        kv.get("--store-info"),
+        kv.get("--artifacts-dir"),
+        kv.get("--out"),
+        kv.get("--generated-at"),
+    ) else {
+        eprintln!("{USAGE}");
+        return 2;
+    };
+
+    // Same sign-options rule as the catalog generator: a seed needs a key id.
+    let sign = match (kv.get("--sign-seed-hex"), kv.get("--key-id")) {
+        (None, _) => None,
+        (Some(_), None) => {
+            eprintln!("--key-id is required when --sign-seed-hex is given");
+            return 2;
+        }
+        (Some(seed_hex), Some(key_id)) => match decode_seed(seed_hex) {
+            Ok(seed) => Some(bundle::SignOpts { seed, key_id }),
+            Err(e) => {
+                eprintln!("FAIL: {e}");
+                return 2;
+            }
+        },
+    };
+
+    match bundle::export(
+        Path::new(catalog),
+        Path::new(store_info),
+        Path::new(artifacts_dir),
+        Path::new(out),
+        generated_at,
+        sign.as_ref(),
+    ) {
+        Ok(r) => {
+            println!(
+                "wrote bundle {} — {} artifact(s), manifest {}",
+                r.out.display(),
+                r.n_artifacts,
+                if r.signed { "signed" } else { "UNSIGNED" }
+            );
+            0
+        }
+        Err(e) => {
+            eprintln!("FAIL: {e}");
+            1
+        }
+    }
+}
+
+fn cmd_import(args: &[String]) -> i32 {
+    let (kv, _, pos) = match parse_flags(args, &[]) {
+        Ok(x) => x,
+        Err(e) => {
+            eprintln!("{e}\n{USAGE}");
+            return 2;
+        }
+    };
+    let Some(dir) = pos.first().or_else(|| kv.get("--dir")) else {
+        eprintln!("usage: gearbox import <bundle-dir> [--expect-fingerprint HEX]");
+        return 2;
+    };
+    let expect = kv.get("--expect-fingerprint").map(String::as_str);
+    match bundle::verify_bundle(Path::new(dir), expect) {
+        Ok(r) => {
+            println!(
+                "OK: bundle verified — store {} signed by {} (fingerprint {})",
+                r.store_id, r.key_id, r.fingerprint
+            );
+            println!(
+                "    {} cog(s), {} artifact(s) re-hashed via file:// — same trust as online",
+                r.n_cogs, r.n_artifacts
+            );
+            0
+        }
+        Err(e) => {
+            eprintln!("FAIL: {e}");
+            1
+        }
+    }
 }
 
 fn cmd_serve(args: &[String]) -> i32 {

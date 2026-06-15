@@ -61,6 +61,53 @@ string values may be any UTF-8 (object keys stay ASCII, numbers stay integers), 
 (`crates/gearbox`) and Python (`tools/`) implementations canonicalize it identically — each
 asserts JCS == its `*.canonical.json` in its test suite.
 
+## Air-gap bundle vector
+
+[`bundle/`](bundle/) is the frozen contract for the **air-gap bundle manifest**
+(protocol §10, Phase 3 T0-A). It is a complete, self-contained bundle:
+
+| file | role |
+|---|---|
+| `bundle/store.json` | store-info, self-signed with the test key (`gearbox-bundle-testvector`) |
+| `bundle/app-registry.json` | signed catalog over the staged `adversarial` cog |
+| `bundle/artifacts/cogs/arm/cog-adversarial-arm` | the one artifact the catalog references |
+| `bundle/manifest.signed.json` | the signed bundle manifest |
+| `bundle/manifest.canonical.json` | JCS bytes of the manifest **without** `signature` (the signing input) |
+
+The manifest signs the **same key** as the catalog (`gearbox-testvector-2026`), with the §7.2
+embedded envelope — so a verifier has one trust anchor and every file is hashed in `files[]`.
+Its `signature.sig` is
+`9//BsmgI6zI3R2PKG1kWaH+PEjk31qiErtdGhw4/+kG6ygxys4c9g1494PEBSbVzwL2xCzLz857XCpkY9+tqDQ==`.
+
+Any producer MUST reproduce `manifest.canonical.json` byte-for-byte and that signature. The
+Rust (`crates/gearbox/tests/bundle.rs`) and Python (`tools/selftest.sh`, case 6) suites assert
+it; the CI **parity** job has Rust export a bundle and Python re-sign its manifest and confirm
+the signatures are byte-identical. A real bundle's manifest is named `manifest.json` — the
+vector uses `manifest.signed.json` only to match the `*.signed.json` naming here.
+
+### Verify / regenerate the bundle vector
+
+```
+# Verify (Python oracle): reproduce the canonical bytes + signature, then verify the bundle.
+python3 - <<'PY'
+import sys, pathlib; sys.path.insert(0, "tools")
+from cogstore import bundle, jcs, signing
+tv = pathlib.Path("docs/protocol/testvectors/bundle")
+m = bundle.build_manifest(tv, "2026-06-10T00:00:00Z")
+assert jcs.canonical(m) == (tv/"manifest.canonical.json").read_bytes()
+seed = bytes.fromhex("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")
+print(signing.sign_catalog(m, seed=seed, key_id="gearbox-testvector-2026")["signature"]["sig"])
+PY
+
+# Regenerate from scratch with the native CLI (cogs dir holding only the adversarial cog):
+gearbox catalog --cogs-dir <dir> --artifacts-dir tools/testdata/artifacts \
+  --store-id gearbox-bundle-testvector --generated-at 2026-06-10T00:00:00Z \
+  --out app-registry.json --sign-seed-hex <seed> --key-id gearbox-testvector-2026
+gearbox export --catalog app-registry.json --store-info store.json \
+  --artifacts-dir tools/testdata/artifacts --out bundle \
+  --generated-at 2026-06-10T00:00:00Z --sign-seed-hex <seed> --key-id gearbox-testvector-2026
+```
+
 ## Regenerate
 
 Deterministic from the seed above. Re-running the generator yields byte-identical

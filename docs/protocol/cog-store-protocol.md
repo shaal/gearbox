@@ -220,3 +220,65 @@ A committed reference + vector lives in [`testvectors/`](testvectors/) (`store.s
 - `oci://` artifact layout (reuse OCI referrers for signatures/SBOM).
 - JCS number formatting, if non-integer numeric fields are ever introduced.
 - Versioning/upgrade semantics — see the enhancements research.
+
+## 10. Air-gap bundle (`manifest.json`) — offline install, same trust
+
+A **bundle** is a complete, verifiable store laid out on a filesystem so a disconnected device
+can install from `file://` with the *same* verification an online store gets (Phase 3, T0-A —
+see the [Phase 3 plan §4](../plans/phase-3-implementation.md)). It is the producer side of the
+`file://` artifact scheme (§3) the install algorithm already models.
+
+```
+<bundle>/
+  store.json            store-info, self-signed (§8)
+  app-registry.json     signed catalog (§3/§7)
+  artifacts/cogs/<arch>/…  every binary + asset the catalog references
+  manifest.json         the bundle manifest (below) — signed with the SAME key as the catalog
+```
+
+### 10.1 The manifest
+
+```jsonc
+{
+  "schema_version": 1,
+  "store_id": "acme-internal",          // MUST equal the catalog's and store.json's store_id
+  "generated_at": "2026-06-14T00:00:00Z",
+  "catalog_sha256": "<sha256 of app-registry.json's exact bytes>",
+  "files": [                             // every bundle file except manifest.json, sorted by path
+    { "path": "app-registry.json", "sha256": "…", "size": 1515 },
+    { "path": "artifacts/cogs/arm/cog-adversarial-arm", "sha256": "…", "size": 159 },
+    { "path": "store.json", "sha256": "…", "size": 580 }
+  ],
+  "signature": { "key_id": "…", "alg": "ed25519", "sig": "…" }   // same envelope as §7.2
+}
+```
+
+The manifest is signed with the **embedded** `signature` envelope of §7 — the same `jcs` +
+Ed25519 path as the catalog and store-info, **not** a separate detached `.sig` — so there is no
+new crypto and one key signs both the catalog and the manifest. Import therefore has a **single
+trust anchor**, and nothing is trusted by path: every file is hashed in `files[]`, and
+`catalog_sha256` binds the exact catalog bytes. `files[]` is sorted by `path` so the document is
+reproducible byte-for-byte. The catalog and store-info are bundled **verbatim** (never
+re-serialized), so `catalog_sha256` is the precise bytes the Seed verifies.
+
+### 10.2 Export / import
+
+- **`gearbox export --catalog … --store-info … --artifacts-dir DIR --out BUNDLE --generated-at TS
+  [--sign-seed-hex HEX --key-id ID]`** — copy the two signed docs + every referenced artifact,
+  re-hash each artifact against the catalog (a mis-staged byte fails *here*, not at the customer),
+  then write + sign `manifest.json`. Transport is a plain `tar` of the directory.
+- **`gearbox import <bundle-dir> [--expect-fingerprint HEX]`** — verify the store-info (TOFU
+  fingerprint, or assert a pinned one with `--expect-fingerprint`), then run the **identical**
+  `verify_catalog` (§7) the online path runs, verify the manifest under the same key, and re-check
+  **every** artifact's `sha256` against the verified catalog. Only the byte source differs
+  (`file://` vs HTTP) — an air-gapped install is **no less trusted** than an online one, and a
+  single flipped artifact byte makes import fail.
+
+### 10.3 Test vector & parity
+
+A frozen bundle vector lives in [`testvectors/bundle/`](testvectors/bundle/)
+(`manifest.signed.json` + `manifest.canonical.json` over a committed `store.json`,
+`app-registry.json`, and one artifact). Any producer MUST reproduce those canonical bytes and
+that signature. The Rust crate (`crates/gearbox`, `bundle.rs`) and the Python oracle
+(`tools/cogstore/bundle.py`) are pinned to it and cross-checked **byte-for-byte** by the CI
+parity job — the same guarantee §7.4 makes for the catalog.

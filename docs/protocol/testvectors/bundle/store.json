@@ -1,0 +1,19 @@
+{
+  "catalog_url": "file://./app-registry.json",
+  "description": "Throwaway air-gap bundle test vector — DO NOT trust.",
+  "keys": [
+    {
+      "alg": "ed25519",
+      "key_id": "gearbox-testvector-2026",
+      "pubkey_b64": "A6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg="
+    }
+  ],
+  "name": "Gearbox Bundle Test Store",
+  "schema_version": 1,
+  "signature": {
+    "alg": "ed25519",
+    "key_id": "gearbox-testvector-2026",
+    "sig": "A79cJFqkqaWTC2C0lELVlXl3ASSB+XtMic9LNEVSwhXq4gaN29utW8UUqqxcHef14bZz+cEAkEYO/u1Du5r3Cw=="
+  },
+  "store_id": "gearbox-bundle-testvector"
+}

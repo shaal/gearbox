@@ -97,6 +97,31 @@ jobs:
           test "$SIG_PY" = "$SIG_RS" || { echo "::error::Rust/Python signatures diverge"; exit 1; }
           echo "Cross-impl signatures are byte-identical."
 
+      - name: Air-gap bundle manifest — Rust exports, Python re-signs + verifies byte-for-byte
+        run: |
+          set -euo pipefail
+          BIN=crates/gearbox/target/debug/gearbox
+
+          # A store + signed catalog over the adversarial cog (no external assets -> self-contained).
+          mkdir -p work/cogs/adversarial
+          cp tools/testdata/cogs/adversarial/cog.toml work/cogs/adversarial/cog.toml
+          "$BIN" store-info create --store-id gearbox-bundle-testvector --name "Bundle Test Store" \
+            --description "parity" --catalog-url "file://./app-registry.json" \
+            --key-id "${TV_KEY_ID}" --sign-seed-hex "${TV_SEED}" --out work/store.json
+          "$BIN" catalog --cogs-dir work/cogs --artifacts-dir tools/testdata/artifacts \
+            --store-id gearbox-bundle-testvector --generated-at "${TV_GENERATED_AT}" \
+            --out work/app-registry.json --sign-seed-hex "${TV_SEED}" --key-id "${TV_KEY_ID}"
+
+          # Rust produces + signs the bundle manifest...
+          "$BIN" export --catalog work/app-registry.json --store-info work/store.json \
+            --artifacts-dir tools/testdata/artifacts --out work/bundle \
+            --generated-at "${TV_GENERATED_AT}" --sign-seed-hex "${TV_SEED}" --key-id "${TV_KEY_ID}"
+          # ...Python rebuilds + signs it over the same bytes; signatures must be byte-identical,
+          #    and Python then verifies the whole Rust-produced bundle (Rust signs -> Python verifies).
+          python3 tools/bundle_parity.py work/bundle
+          # Rust verifies its own bundle too (the file:// import path).
+          "$BIN" import work/bundle
+
   # ---- Required: style + lints. ----
   lint:
     name: Lint (fmt + clippy)
