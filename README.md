@@ -100,6 +100,13 @@ examples/publish-store.sh                        # operator: stage a self-hostab
 examples/store-publish.workflow.yml              # template (copy to your store repo): GitHub Actions that re-signs + redeploys the store on push
 ```
 
+**In the wild** — a live store built end-to-end with this tooling:
+[**arcade.shaal.dev**](https://arcade.shaal.dev) (a games store for Cognitum). It demonstrates the
+recommended **release-download** shape — the cog is an independent unit that release-builds its
+binary ([`shaal/cog-doom`](https://github.com/shaal/cog-doom)), and the store pins a version,
+downloads it, and signs + hosts it ([`shaal/cogstore-arcade`](https://github.com/shaal/cogstore-arcade)),
+with a client-rendered storefront over the same signed `store.json` / `app-registry.json` a Seed verifies.
+
 Planned: a reference store server; multi-store (Phase 2). The device-side verifier lives in
 `cognitum-one/seed` (B4, specced in `docs/cross-repo/`).
 
