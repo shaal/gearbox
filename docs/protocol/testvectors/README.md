@@ -122,8 +122,12 @@ The chain's **head `self`** is
 every `self`/`prev` byte-for-byte. The Rust (`crates/gearbox/tests/audit.rs`) and Python
 (`tools/selftest.sh`, case 7) suites assert it; the CI **parity** job has Rust append a chain,
 Python rebuild it byte-for-byte and verify it, then Rust verify the Python-rebuilt log. `verify`
-catches any edit/reorder/mid-deletion at the first bad `seq` (a tail truncation is the known
-keyless limit — §11.2).
+catches any edit/reorder/mid-deletion at the first bad `seq`; a tail truncation is caught by the
+**signed head** (`head.signed.json` + `head.canonical.json`, protocol §11.4), which commits
+`log_id`/`count`/`head_self` so `audit verify --head` rejects a log truncated below the checkpoint.
+Head `signature.sig`:
+`ANdIAGBBuhBO/23PiTFWlxfLJSzKHzSViulEZo+C4CegdwPTj5O4v6hqcxdEv8bqHQjPl2tka9aStzmA0xGcCQ==`. Both the
+chain and the head are cross-checked byte-for-byte by the CI parity job.
 
 ```
 # Verify (Python oracle): recompute the chain + reproduce it byte-for-byte from the same fields.

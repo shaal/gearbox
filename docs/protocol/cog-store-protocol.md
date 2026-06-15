@@ -315,14 +315,14 @@ the Python oracle is byte-identical (even with UTF-8 `detail` values).
   contiguous from 0, and that each `prev` links to the previous `self`; exit non-zero at the
   **first** bad `seq`. Prints the head `self` on success (the tip a future phase could sign).
 
-### 11.2 What it detects (and the one thing it doesn't)
+### 11.2 What the keyless chain detects (and the one thing it doesn't)
 
 `verify` catches any **edit**, **reordering**, or **mid-log deletion** offline and names the
 first bad `seq`. It is **evidence, not access control**, and holds no secrets — only key ids,
 hashes, and outcomes. A pure **tail truncation** (dropping the last *k* records) leaves a valid
-shorter prefix; detecting that needs a signed head, deferred to keep Tier 0 keyless (§5.1). The
-seed runtime appends at each trust-affecting moment (add-store, verify, install, `policy_deny`),
-so a managed device's denials are recordable from day one.
+shorter prefix that the keyless chain alone cannot detect — closed by the **signed head** (§11.4).
+The seed runtime appends at each trust-affecting moment (add-store, verify, install,
+`policy_deny`), so a managed device's denials are recordable from day one.
 
 ### 11.3 Test vector & parity
 
@@ -332,6 +332,34 @@ value). Any producer MUST reproduce its `self`/`prev` hashes byte-for-byte. The 
 (`audit.rs`) and the Python oracle (`tools/cogstore/audit.py`) are pinned to it and cross-checked
 by the CI parity job — Rust appends a chain, Python rebuilds it byte-for-byte and verifies it,
 and Rust verifies the Python-rebuilt log.
+
+### 11.4 Signed head — tamper-evident → tamper-proof
+
+To close the tail-truncation gap, an authority (or the device, periodically) signs a small **head
+document** committing the chain's tip:
+
+```jsonc
+{
+  "schema_version": 1,
+  "log_id": "acme-device-01",       // binds the head to one log
+  "count": 4,                        // number of records committed
+  "head_self": "<self of record count-1>",
+  "signed_at": "2026-06-14T16:00:00Z",
+  "signature": { "key_id": "…", "alg": "ed25519", "sig": "…" }   // §7.2 envelope
+}
+```
+
+`gearbox audit sign-head` signs the current tip; `gearbox audit verify --head head.json --key-id …
+--pubkey-b64 …` additionally checks the head's signature, that the log still holds at least `count`
+records, and that `records[count-1].self == head_self`. Truncating below the checkpoint — or any
+edit inside the signed prefix (which would change `head_self`) — now **fails**.
+
+The head certifies a **prefix**: records appended *after* it are beyond the checkpoint and remain
+only tamper-*evident* until the head is re-signed (sign after each append for the strongest
+guarantee; periodically for a lighter one). A frozen `head.signed.json` + `head.canonical.json`
+sit beside `log.jsonl`, cross-checked byte-for-byte by the same parity job. This keeps Tier-0's
+keyless chain the default while making the log tamper-**proof** up to a signed checkpoint when a
+key is available.
 
 ## 12. Managed-mode policy (`policy.json`) — admin-enforced
 

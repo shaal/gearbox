@@ -16,7 +16,7 @@ bytes of the record, so a log written here is byte-identical to one written by t
 import hashlib
 import pathlib
 
-from . import jcs
+from . import jcs, signing
 
 ZERO_PREV = "0" * 64
 
@@ -105,6 +105,48 @@ def verify(records: list[dict]) -> dict:
         prev_expected = stored_self
         head_self = stored_self
     return {"n": len(records), "head_self": head_self}
+
+
+def _is_hex64(s) -> bool:
+    return isinstance(s, str) and len(s) == 64 and all(c in "0123456789abcdef" for c in s)
+
+
+def build_head(log_id: str, count: int, head_self: str, signed_at: str) -> dict:
+    """Build an unsigned signed-head document — a checkpoint committing the chain's tip."""
+    return {
+        "schema_version": 1,
+        "log_id": log_id,
+        "count": int(count),
+        "head_self": head_self,
+        "signed_at": signed_at,
+    }
+
+
+def validate_head(head: dict) -> None:
+    def req(cond, msg):
+        if not cond:
+            raise ValueError(f"invalid head: {msg}")
+    req(head.get("schema_version") == 1, "schema_version must be 1")
+    req(isinstance(head.get("log_id"), str) and head["log_id"], "log_id missing")
+    req(isinstance(head.get("count"), int) and not isinstance(head.get("count"), bool)
+        and head["count"] >= 0, "count must be a non-negative integer")
+    req(_is_hex64(head.get("head_self")), "head_self must be 64 lowercase hex")
+    req(isinstance(head.get("signed_at"), str) and head["signed_at"], "signed_at missing")
+
+
+def verify_head(records: list[dict], head: dict, trusted: dict) -> dict:
+    """Verify a signed head against a (chain-verified) log: its signature, then that the records
+    still contain its signed prefix intact (`len >= count` and `records[count-1].self ==
+    head_self`). Raises on any failure. Returns {key_id, log_id, count}."""
+    validate_head(head)
+    key_id = signing.verify_catalog(head, trusted)  # same envelope as the catalog
+    count = head["count"]
+    if len(records) < count:
+        raise ValueError(f"log truncated: {len(records)} record(s) < signed count {count}")
+    got_self = ZERO_PREV if count == 0 else records[count - 1].get("self", "")
+    if got_self != head["head_self"]:
+        raise ValueError(f"signed head does not match the log at record {max(count, 1) - 1} (chain diverged)")
+    return {"key_id": key_id, "log_id": head["log_id"], "count": count}
 
 
 def parse_details(pairs: list[str]) -> dict:

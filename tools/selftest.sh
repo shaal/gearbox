@@ -145,12 +145,13 @@ except Exception as e:
 shutil.rmtree(work)
 PY
 
-echo "== 7/9 audit log (T0-B): conformance + append roundtrip + tamper =="
-python3 - "$TVDIR/audit" <<'PY'
-import sys, pathlib, tempfile
+echo "== 7/9 audit log (T0-B): conformance + append roundtrip + tamper + signed head =="
+python3 - "$TVDIR/audit" "$SEED" "$KEYID" <<'PY'
+import sys, json, pathlib, tempfile
 sys.path.insert(0, ".")
-from cogstore import audit
+from cogstore import audit, jcs, signing
 tv = pathlib.Path(sys.argv[1])
+seed = bytes.fromhex(sys.argv[2]); kid = sys.argv[3]; pub = signing.public_key_b64(seed)
 frozen = (tv / "log.jsonl").read_bytes()
 
 # (a) conformance: verify the frozen chain + recompute every self hash
@@ -185,6 +186,24 @@ except audit.ChainBreak as e:
     assert e.seq == 1, e
     print(f"   OK: edited record correctly REJECTED at {e}")
 work.unlink()
+
+# (d) signed head: conformance + a tail truncation that plain verify accepts must FAIL
+clean = audit.read_log(tv / "log.jsonl")
+rep2 = audit.verify(clean)
+h = audit.build_head("gearbox-testvector-log", rep2["n"], rep2["head_self"], "2026-06-10T00:00:00Z")
+assert jcs.canonical(h) == (tv / "head.canonical.json").read_bytes(), "head JCS differs from the vector"
+frozen_head = json.loads((tv / "head.signed.json").read_text())
+assert signing.sign_catalog(h, seed=seed, key_id=kid)["signature"]["sig"] == \
+    frozen_head["signature"]["sig"], "head signature differs from the vector"
+assert audit.verify_head(clean, frozen_head, {kid: pub})["count"] == 4
+print("   OK: build_head + signing reproduce the frozen head vector; verify_head passes")
+truncated = clean[:3]
+assert audit.verify(truncated)["n"] == 3   # plain chain still valid (the T0-B gap)
+try:
+    audit.verify_head(truncated, frozen_head, {kid: pub})
+    print("   UNEXPECTED: signed head accepted a truncated log"); sys.exit(1)
+except ValueError as e:
+    print(f"   OK: signed head catches the tail truncation ({e})")
 PY
 
 echo "== 8/9 managed policy (T0-C): conformance + verify + forged reject =="
