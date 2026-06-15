@@ -1,0 +1,53 @@
+{
+  "cogs": [
+    {
+      "id": "adversarial",
+      "versions": [
+        {
+          "artifacts": {
+            "assets": [],
+            "binary": {
+              "path": "cogs/arm/cog-adversarial-arm",
+              "sha256": "d9d138732f69128ba241301310c71275c081b11fe75cb1cc8e6b602df02bf91a",
+              "size": 159
+            }
+          },
+          "manifest": {
+            "cog": {
+              "binary": "cog-adversarial-arm",
+              "category": "security",
+              "description": "Flags adversarial perturbations in the sensor stream.",
+              "hardware_requirement": "pi-zero-2w",
+              "id": "adversarial",
+              "name": "Adversarial Detector",
+              "version": "1.0.0"
+            },
+            "config": {
+              "interval_ms": {
+                "cli_arg": "--interval-ms",
+                "default": 500,
+                "label": "Sampling interval (ms)",
+                "max": 5000,
+                "min": 50,
+                "type": "integer"
+              }
+            },
+            "resources": {
+              "cpu_pct": 30,
+              "ram_mb": 64
+            }
+          },
+          "version": "1.0.0"
+        }
+      ]
+    }
+  ],
+  "generated_at": "2026-06-10T00:00:00Z",
+  "schema_version": 1,
+  "signature": {
+    "alg": "ed25519",
+    "key_id": "gearbox-testvector-2026",
+    "sig": "duNB40k9xSxWsCGyIL8MmGwpWJLL7kpMdteNGuCf9nXXsrEk1OrZSG96HRaL1pqYovxx5+gjq863aKHd10mqCA=="
+  },
+  "store_id": "gearbox-bundle-testvector"
+}

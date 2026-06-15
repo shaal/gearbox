@@ -97,6 +97,75 @@ pub fn build_cog_version(
     }))
 }
 
+/// A concrete artifact a catalog references: its store-relative `path` (`cogs/<arch>/…`),
+/// the catalog's recorded `sha256`, and `size`. The unit an air-gap bundle must carry and
+/// re-verify (bundle T0-A).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArtifactRef {
+    pub path: String,
+    pub sha256: String,
+    pub size: i64,
+}
+
+fn artifact_ref(o: &Map<String, Value>, ctx: &str) -> Result<ArtifactRef, String> {
+    Ok(ArtifactRef {
+        path: str_field(o, "path", ctx)?.to_string(),
+        sha256: str_field(o, "sha256", ctx)?.to_string(),
+        size: o
+            .get("size")
+            .and_then(Value::as_i64)
+            .ok_or_else(|| format!("{ctx}: missing/invalid `size`"))?,
+    })
+}
+
+/// Every concrete artifact a (full) catalog references, in catalog order: binary then assets
+/// per version. Errors if any binary is still `pending` — a manifests-only catalog has no
+/// bytes to bundle. The single source of truth for what `export` copies and `import` re-hashes,
+/// so the air-gap path checks exactly the artifacts the online path would fetch.
+pub fn artifact_paths(catalog: &Value) -> Result<Vec<ArtifactRef>, String> {
+    let cogs = catalog
+        .get("cogs")
+        .and_then(Value::as_array)
+        .ok_or("catalog: cogs must be a list")?;
+    let mut out = Vec::new();
+    for c in cogs {
+        let cid = c.get("id").and_then(Value::as_str).unwrap_or("?");
+        let versions = c
+            .get("versions")
+            .and_then(Value::as_array)
+            .ok_or_else(|| format!("catalog: {cid}.versions missing"))?;
+        for v in versions {
+            let arts = v
+                .get("artifacts")
+                .and_then(Value::as_object)
+                .ok_or_else(|| format!("catalog: {cid}.artifacts missing"))?;
+            let binary = arts
+                .get("binary")
+                .and_then(Value::as_object)
+                .ok_or_else(|| format!("catalog: {cid} binary missing"))?;
+            if binary.get("pending").and_then(Value::as_bool) == Some(true) {
+                return Err(format!(
+                    "catalog: {cid} binary is pending — a manifests-only catalog cannot be bundled"
+                ));
+            }
+            out.push(artifact_ref(binary, &format!("{cid} binary"))?);
+            for a in arts
+                .get("assets")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+            {
+                let aid = a.get("id").and_then(Value::as_str).unwrap_or("?");
+                let o = a
+                    .as_object()
+                    .ok_or_else(|| format!("catalog: {cid} asset {aid} is not an object"))?;
+                out.push(artifact_ref(o, &format!("{cid} asset {aid}"))?);
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// The cog ids a catalog offers — for building a `resolve::Resolver`'s offerings map.
 pub fn cog_ids(catalog: &Value) -> Vec<String> {
     catalog

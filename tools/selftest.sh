@@ -5,6 +5,8 @@
 #   3. manifests-only — generate without a built binary (A3 gate): binary pending, assets enriched
 #   4. asset_entry  — filename + required_when flow into asset entries (B5)
 #   5. verify_catalog.py — the A4 verify-before-upload helper (positive + tamper)
+#   6. air-gap bundle — build/sign/verify the bundle manifest (T0-A); conformance vs the
+#                       frozen vector + a tampered-artifact import must fail
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -16,7 +18,7 @@ OUT="$(mktemp /tmp/app-registry.XXXXXX.json)"
 MOUT="$(mktemp /tmp/app-registry-mo.XXXXXX.json)"
 trap 'rm -f "$OUT" "$MOUT"' EXIT
 
-echo "== 1/5 conformance vs frozen #1 test vector =="
+echo "== 1/6 conformance vs frozen #1 test vector =="
 python3 - "$TVDIR" "$SEED" "$KEYID" <<'PY'
 import sys, json, pathlib
 sys.path.insert(0, ".")
@@ -32,7 +34,7 @@ assert re["signature"]["sig"] == signed["signature"]["sig"], \
 print("   OK: jcs + signing reproduce the frozen vector byte-for-byte")
 PY
 
-echo "== 2/5 end-to-end (full) generate -> validate -> verify =="
+echo "== 2/6 end-to-end (full) generate -> validate -> verify =="
 python3 catalog_gen.py \
     --cogs-dir testdata/cogs --artifacts-dir testdata/artifacts \
     --store-id cognitum-official --generated-at 2026-06-10T00:00:00Z \
@@ -51,7 +53,7 @@ assert doom["assets"][0]["filename"] == "freedoom1.wad", doom["assets"][0]
 print(f"   OK: valid + verified ({used}); asset carries filename")
 PY
 
-echo "== 3/5 manifests-only (A3 gate): no built binary =="
+echo "== 3/6 manifests-only (A3 gate): no built binary =="
 python3 catalog_gen.py \
     --cogs-dir testdata/cogs --manifests-only \
     --store-id cognitum-official --generated-at 2026-06-10T00:00:00Z --out "$MOUT"
@@ -66,7 +68,7 @@ assert b.get("pending") is True and "sha256" not in b, b
 print("   OK: validates with binary pending (no artifact needed)")
 PY
 
-echo "== 4/5 asset_entry: filename + required_when flow =="
+echo "== 4/6 asset_entry: filename + required_when flow =="
 python3 - <<'PY'
 import sys
 sys.path.insert(0, ".")
@@ -82,7 +84,7 @@ assert e2["path"] == "cogs/arm/x/y" and "required_when" not in e2, e2
 print("   OK: filename + required_when carried; path preferred; required_when omitted when absent")
 PY
 
-echo "== 5/5 verify_catalog.py (A4 verify-before-upload) =="
+echo "== 5/6 verify_catalog.py (A4 verify-before-upload) =="
 python3 verify_catalog.py "$TVDIR/catalog.signed.json" --key-id "$KEYID" --pubkey-b64 "$PUB"
 python3 - "$TVDIR" > "$MOUT.tamper" <<'PY'
 import sys, json, pathlib
@@ -96,5 +98,45 @@ else
     echo "   OK: tampered catalog correctly REJECTED"
 fi
 rm -f "$MOUT.tamper"
+
+echo "== 6/6 air-gap bundle (T0-A): conformance + export roundtrip + tamper =="
+python3 - "$TVDIR/bundle" "$SEED" "$KEYID" <<'PY'
+import sys, json, pathlib, shutil, tempfile
+sys.path.insert(0, ".")
+from cogstore import bundle, jcs, signing
+tv, seed_hex, kid = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+seed = bytes.fromhex(seed_hex)
+
+# (a) conformance: build_manifest + sign reproduce the frozen bundle vector byte-for-byte
+m = bundle.build_manifest(tv, "2026-06-10T00:00:00Z")
+assert jcs.canonical(m) == (tv / "manifest.canonical.json").read_bytes(), \
+    "bundle manifest JCS differs from the frozen vector"
+assert signing.sign_catalog(m, seed=seed, key_id=kid)["signature"]["sig"] == \
+    json.loads((tv / "manifest.signed.json").read_text())["signature"]["sig"], \
+    "bundle manifest signature differs from the frozen vector"
+print("   OK: build_manifest + signing reproduce the frozen bundle vector byte-for-byte")
+
+# (b) export a fresh bundle from the vector inputs, then import it (full produce -> consume)
+work = pathlib.Path(tempfile.mkdtemp())
+out = work / "bundle"
+bundle.export(tv / "app-registry.json", tv / "store.json", tv / "artifacts",
+              out, "2026-06-10T00:00:00Z", seed=seed, key_id=kid)
+body = {k: v for k, v in json.loads((out / "manifest.json").read_text()).items() if k != "signature"}
+assert jcs.canonical(body) == (tv / "manifest.canonical.json").read_bytes(), \
+    "exported manifest diverged from the vector"
+rep = bundle.verify_bundle(out)
+assert rep["n_artifacts"] == 1 and rep["key_id"] == kid, rep
+print(f"   OK: export -> import verifies via file:// ({rep['n_cogs']} cog, {rep['n_artifacts']} artifact)")
+
+# (c) flip a single artifact byte -> import MUST fail (the air-gap acceptance criterion)
+art = out / "artifacts/cogs/arm/cog-adversarial-arm"
+art.write_bytes(art.read_bytes() + b"X")
+try:
+    bundle.verify_bundle(out)
+    print("   UNEXPECTED: tampered bundle verified"); sys.exit(1)
+except Exception as e:
+    print(f"   OK: tampered artifact correctly REJECTED ({e})")
+shutil.rmtree(work)
+PY
 
 echo "ALL CHECKS PASSED"

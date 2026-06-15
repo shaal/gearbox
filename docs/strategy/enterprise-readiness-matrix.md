@@ -64,7 +64,7 @@ SBOM / vuln* layer that procurement increasingly checks is unbuilt.
 | Capability | Expectation | Status | Notes |
 |---|---|---|---|
 | On-prem / self-hosted store | No dependency on a Cognitum-run service | **Built** (ref) | `gearbox serve`; any HTTPS/S3/GCS/OCI host |
-| Air-gap / offline bundles | Install with no internet (USB/NAS) | **Not started** | `file://` stubbed; export bundle is a Tier-0 proof point (enhancements §H) |
+| Air-gap / offline bundles | Install with no internet (USB/NAS) | **Built** (ref) | `gearbox export`/`import` (T0-A): signed bundle, `file://` install, same `verify_catalog` + per-artifact sha256 as online; frozen vector + Rust↔Python parity (protocol §10) |
 | Pluggable artifact backends | Reuse Harbor/Artifactory/ECR/S3 | **Partial** | scheme-keyed fetcher; `gs`/`https` built, `s3`/`oci`/`file` stubbed (B2) |
 | LAN peer caching | Bandwidth for fleets | **Not started** | enhancements §H |
 

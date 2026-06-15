@@ -8,7 +8,7 @@ matching the Python `tools/` reference and pinned to the frozen test vectors in
 ## Build / test / run
 
 ```bash
-cargo test                                   # 24 tests (jcs/verify + catalog + store-info + server + resolve)
+cargo test                                   # 33 tests (jcs/verify + catalog + store-info + server + resolve + bundle)
 
 gearbox catalog --cogs-dir DIR (--artifacts-dir DIR | --manifests-only) \
                 --store-id ID --generated-at TS --out FILE [--sign-seed-hex HEX --key-id ID]
@@ -17,6 +17,9 @@ gearbox verify  <catalog.json> --key-id ID --pubkey-b64 B64
 gearbox store-info create --store-id ID --name NAME [--description D] --catalog-url URL \
                 --key-id KID (--sign-seed-hex HEX | --pubkey-b64 B64) --out FILE
 gearbox store-info verify <store.json>       # prints fingerprints + checks self-signature
+gearbox export  --catalog app-registry.json --store-info store.json --artifacts-dir DIR \
+                --out BUNDLE --generated-at TS [--sign-seed-hex HEX --key-id ID]  # air-gap bundle
+gearbox import  <bundle-dir> [--expect-fingerprint HEX]      # verify + install via file:// (T0-A)
 gearbox serve   --dir DIR [--port N] [--auth-token TOKEN]   # reference store server (dev)
 ```
 
@@ -29,13 +32,18 @@ src/catalog.rs   build + validate app-registry.json from a cog.toml tree (protoc
 src/store.rs     build / validate / fingerprint / self-verify store.json (protocol §8)
 src/resolve.rs   multi-store resolution: namespacing / priority / pins (Phase 2 §6) — pure, no I/O
 src/server.rs    minimal dependency-free HTTP store server (dev): store.json + catalog + artifacts
-src/main.rs      `gearbox` CLI: catalog / sign / verify / store-info / serve
-tests/           vector.rs · catalog.rs · store.rs · server.rs · resolve.rs
+src/bundle.rs    air-gap bundle (Phase 3 T0-A): export/import a signed file://-installable store (§10)
+src/main.rs      `gearbox` CLI: catalog / sign / verify / store-info / export / import / serve
+tests/           vector.rs · catalog.rs · store.rs · server.rs · resolve.rs · bundle.rs
 ```
 
-End-to-end demo: [`examples/store-loop.sh`](../../examples/store-loop.sh) builds a store, serves
-it, then runs the add-store loop a Seed would (TOFU fingerprint → verify catalog → fetch+hash
-artifact), including bearer auth.
+End-to-end demos:
+- [`examples/store-loop.sh`](../../examples/store-loop.sh) builds a store, serves it, then runs
+  the add-store loop a Seed would (TOFU fingerprint → verify catalog → fetch+hash artifact),
+  including bearer auth.
+- [`examples/bundle-airgap.sh`](../../examples/bundle-airgap.sh) exports a signed air-gap bundle,
+  carries it across an "air gap" as a `tar`, imports it via `file://` with the same verification,
+  and shows a single tampered artifact byte being refused.
 
 ## Conformance & cross-implementation parity
 
@@ -54,7 +62,9 @@ and gated by the vectors + parity.
 ## Scope
 
 Full parity with the Python tools (generate / sign / verify), plus `store-info` (Phase 2 TOFU
-identity), `serve` (a dependency-free reference store server), and `resolve` (multi-store
-namespacing / priority / pins). Next (Phase 2+): wiring these into the seed's multi-store add
-flow + UX (specced in `docs/cross-repo/`). Dependencies: `serde_json`, `ed25519-dalek`,
-`base64`, `toml`, `sha2`, `hex` — the server + resolver add none (std-only); no `clap`.
+identity), `serve` (a dependency-free reference store server), `resolve` (multi-store
+namespacing / priority / pins), and `export`/`import` (Phase 3 T0-A air-gap bundle, with a
+`tools/cogstore/bundle.py` parity oracle). Next (Phase 2+): wiring these into the seed's
+multi-store add flow + UX (specced in `docs/cross-repo/`). Dependencies: `serde_json`,
+`ed25519-dalek`, `base64`, `toml`, `sha2`, `hex` — the server, resolver, and bundle add none
+(std-only); no `clap`.
