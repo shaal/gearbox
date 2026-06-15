@@ -97,6 +97,7 @@ examples/audit-log.sh                           # e2e demo: append -> verify -> 
 examples/managed-mode.sh                        # e2e demo: sign policy -> enforce (allow/deny + audit) -> forgery refused (T0-C)
 examples/attestation.sh                         # e2e demo: sign provenance+SBOM -> verify sig + digest binding -> swap/forgery refused
 examples/publish-store.sh                        # operator: stage a self-hostable HTTPS store (store.json + catalog + sha256-verified artifacts [+ attest/audit])
+examples/store-publish.workflow.yml              # template (copy to your store repo): GitHub Actions that re-signs + redeploys the store on push
 ```
 
 Planned: a reference store server; multi-store (Phase 2). The device-side verifier lives in

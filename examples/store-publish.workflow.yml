@@ -1,0 +1,83 @@
+# TEMPLATE — copy to <your-store-repo>/.github/workflows/publish.yml
+#
+# This file is intentionally NOT under .github/workflows/ here, so it never runs in gearbox's
+# own CI — it is a reference you copy into the repo that hosts your store (the one whose Pages
+# site serves arcade.shaal.dev). It rebuilds, re-signs, and redeploys the store on every push,
+# driving examples/publish-store.sh.
+#
+# One-time setup in your store repo:
+#   1. Settings → Secrets and variables → Actions → New secret:
+#        STORE_SIGNING_KEY = the 64-hex contents of your signing key (the --seed-file value).
+#      The key is your store's whole trust anchor — keep it only here and in offline backup.
+#   2. Settings → Pages → Source = "GitHub Actions"; add custom domain arcade.shaal.dev
+#      (+ a DNS CNAME  arcade → <user>.github.io).
+#   3. Commit this workflow, manifests/<cog>/cog.toml, and the cog source under cog/.
+#
+# Assumptions (adjust to your layout):
+#   - manifests/doom/cog.toml          the cog manifest
+#   - cog/Dockerfile                   builds the armhf binary at /out/cog-doom-arm
+#   - the FreeDoom WAD is fetched here (deterministic + sha256-checked by publish-store.sh)
+#
+# Notes:
+#   - publish-store.sh cd's to the gearbox repo, so pass ABSOLUTE paths ($GITHUB_WORKSPACE/...).
+#   - generated_at uses `date -u`, so each run re-signs. Pin it to a value you bump deliberately
+#     if you want byte-stable output (only re-sign when inputs change).
+#   - This publishes a valid, verifiable store; a device installs from it once the Seed supports
+#     custom stores (the StoreDescriptor / https-fetch / verify path — protocol §2/§4).
+
+name: Publish store
+on:
+  push: { branches: [main] }
+  workflow_dispatch:
+permissions: { contents: read, pages: write, id-token: write }
+concurrency: { group: pages, cancel-in-progress: true }
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: "${{ steps.deploy.outputs.page_url }}"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build the gearbox publishing tool
+        run: |
+          git clone --depth 1 https://github.com/shaal/gearbox /tmp/gearbox
+          cargo build --release --manifest-path /tmp/gearbox/crates/gearbox/Cargo.toml
+          echo "GEARBOX=/tmp/gearbox/crates/gearbox/target/release/gearbox" >> "$GITHUB_ENV"
+
+      - name: Build the doom ARM binary
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/staged/cogs/arm/wads"
+          docker build -t cog-doom-arm -f cog/Dockerfile cog
+          cid=$(docker create cog-doom-arm)
+          docker cp "$cid:/out/cog-doom-arm" "$GITHUB_WORKSPACE/staged/cogs/arm/cog-doom-arm"   # adjust path per your Dockerfile
+          docker rm "$cid"
+
+      - name: Fetch FreeDoom WAD
+        run: |
+          curl -L -o fd.zip https://github.com/freedoom/freedoom/releases/download/v0.13.0/freedoom-0.13.0.zip
+          unzip -j fd.zip '*/freedoom1.wad' -d "$GITHUB_WORKSPACE/staged/cogs/arm/wads"
+
+      - name: Sign + stage the store
+        env:
+          STORE_SIGNING_KEY: "${{ secrets.STORE_SIGNING_KEY }}"
+        run: |
+          printf '%s' "$STORE_SIGNING_KEY" > "$RUNNER_TEMP/key.hex"
+          /tmp/gearbox/examples/publish-store.sh \
+            --store-id shaal-arcade --name "Shaal Arcade — games for Cognitum" \
+            --base-url https://arcade.shaal.dev --key-id shaal-arcade-2026 \
+            --seed-file "$RUNNER_TEMP/key.hex" \
+            --cogs-dir "$GITHUB_WORKSPACE/manifests" \
+            --artifacts-dir "$GITHUB_WORKSPACE/staged" \
+            --generated-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --out "$GITHUB_WORKSPACE/public" --attest
+          rm -f "$RUNNER_TEMP/key.hex"
+          echo arcade.shaal.dev > "$GITHUB_WORKSPACE/public/CNAME"
+
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: public }
+      - id: deploy
+        uses: actions/deploy-pages@v4
