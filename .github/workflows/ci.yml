@@ -122,6 +122,28 @@ jobs:
           # Rust verifies its own bundle too (the file:// import path).
           "$BIN" import work/bundle
 
+      - name: Audit hash chain — Rust appends, Python rebuilds byte-for-byte + cross-verifies
+        run: |
+          set -euo pipefail
+          BIN=crates/gearbox/target/debug/gearbox
+          LOG=audit.jsonl; rm -f "$LOG" "$LOG".rebuilt.jsonl
+
+          # Rust appends a scripted add_store -> verify_catalog -> install -> policy_deny chain
+          # (the policy_deny detail carries a non-ASCII em-dash to exercise the UTF-8 JCS path).
+          "$BIN" audit append --log "$LOG" --ts 2026-06-14T15:00:00Z --event add_store \
+            --subject acme-internal --detail key_id=acme-signing-2026 --detail result=ok
+          "$BIN" audit append --log "$LOG" --ts 2026-06-14T15:01:00Z --event verify_catalog \
+            --subject acme-internal --detail result=ok
+          "$BIN" audit append --log "$LOG" --ts 2026-06-14T15:02:00Z --event install \
+            --subject acme-internal/doom@0.1.0 --detail sha256=abcd --detail result=ok
+          "$BIN" audit append --log "$LOG" --ts 2026-06-14T15:03:00Z --event policy_deny \
+            --subject cognitum-official/doom --detail "reason=store not allowed — managed" --detail result=deny
+
+          # Python verifies the Rust log and rebuilds it byte-for-byte (Rust -> Python)...
+          python3 tools/audit_parity.py "$LOG"
+          # ...then Rust verifies the Python-rebuilt log (Python -> Rust).
+          "$BIN" audit verify --log "$LOG".rebuilt.jsonl
+
   # ---- Required: style + lints. ----
   lint:
     name: Lint (fmt + clippy)
