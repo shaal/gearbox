@@ -282,3 +282,53 @@ A frozen bundle vector lives in [`testvectors/bundle/`](testvectors/bundle/)
 that signature. The Rust crate (`crates/gearbox`, `bundle.rs`) and the Python oracle
 (`tools/cogstore/bundle.py`) are pinned to it and cross-checked **byte-for-byte** by the CI
 parity job — the same guarantee §7.4 makes for the catalog.
+
+## 11. Audit / event log (`audit.jsonl`) — tamper-evident, offline
+
+A device keeps an append-only log of trust-affecting actions that can be validated **offline,
+with no server and no key** (Phase 3, T0-B — see the [Phase 3 plan §5](../plans/phase-3-implementation.md)).
+Each line is one JSON record, **hash-chained** to the previous one:
+
+```jsonc
+{
+  "seq": 0,                          // contiguous from 0
+  "ts": "2026-06-14T15:00:00Z",      // caller-supplied (the seed passes real time; tests pass fixed)
+  "event": "add_store",             // add_store | verify_catalog | install | policy_deny | key_change
+  "subject": "acme-internal",
+  "detail": { "key_id": "…", "result": "ok" },   // free-form string→string map (ASCII keys, UTF-8 values)
+  "prev": "<the previous record's `self`, or 64 zeros for seq 0>",
+  "self": "<sha256 of JCS(this record without `self`)>"
+}
+```
+
+`prev`/`self` reuse `jcs` (§7.1) + `sha2` only — **no new crypto, no key**. Because `prev` is
+part of the bytes `self` hashes, every `self` transitively commits to the whole prior chain: a
+flipped byte anywhere changes that record's `self` and breaks the next record's `prev`. Each
+stored line is the record's **JCS canonical bytes**, so a log written by the Rust crate and by
+the Python oracle is byte-identical (even with UTF-8 `detail` values).
+
+### 11.1 CLI
+
+- **`gearbox audit append --log FILE --ts TS --event EVENT --subject SUBJ [--detail k=v …]`** —
+  read the chain head, append one record with `prev` = the head's `self` (or 64 zeros if empty).
+- **`gearbox audit verify --log FILE`** — recompute every record's `self`, that `seq` is
+  contiguous from 0, and that each `prev` links to the previous `self`; exit non-zero at the
+  **first** bad `seq`. Prints the head `self` on success (the tip a future phase could sign).
+
+### 11.2 What it detects (and the one thing it doesn't)
+
+`verify` catches any **edit**, **reordering**, or **mid-log deletion** offline and names the
+first bad `seq`. It is **evidence, not access control**, and holds no secrets — only key ids,
+hashes, and outcomes. A pure **tail truncation** (dropping the last *k* records) leaves a valid
+shorter prefix; detecting that needs a signed head, deferred to keep Tier 0 keyless (§5.1). The
+seed runtime appends at each trust-affecting moment (add-store, verify, install, `policy_deny`),
+so a managed device's denials are recordable from day one.
+
+### 11.3 Test vector & parity
+
+A frozen chain vector lives in [`testvectors/audit/`](testvectors/audit/) (`log.jsonl`, a four-
+record add_store → verify_catalog → install → policy_deny chain with a non-ASCII `detail`
+value). Any producer MUST reproduce its `self`/`prev` hashes byte-for-byte. The Rust crate
+(`audit.rs`) and the Python oracle (`tools/cogstore/audit.py`) are pinned to it and cross-checked
+by the CI parity job — Rust appends a chain, Python rebuilds it byte-for-byte and verifies it,
+and Rust verifies the Python-rebuilt log.

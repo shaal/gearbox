@@ -108,6 +108,39 @@ gearbox export --catalog app-registry.json --store-info store.json \
   --generated-at 2026-06-10T00:00:00Z --sign-seed-hex <seed> --key-id gearbox-testvector-2026
 ```
 
+## Audit log vector
+
+[`audit/log.jsonl`](audit/log.jsonl) is the frozen contract for the **hash-chained audit log**
+(protocol §11, Phase 3 T0-B): a four-record `add_store → verify_catalog → install → policy_deny`
+chain. Each record is one line of **JCS canonical bytes**; `self = sha256(JCS(record − self))`
+and `prev` = the previous record's `self` (64 zeros for `seq` 0). The `policy_deny` record's
+`detail.reason` carries a non-ASCII em-dash **on purpose** — string values may be any UTF-8, and
+the Rust (`crates/gearbox`) and Python (`tools/`) implementations canonicalize it identically.
+
+The chain's **head `self`** is
+`65a00c0ac86fd4ad8b16919bc9b5022939481ce87bcb783818ae8d78ae8ea2d3`. Any producer MUST reproduce
+every `self`/`prev` byte-for-byte. The Rust (`crates/gearbox/tests/audit.rs`) and Python
+(`tools/selftest.sh`, case 7) suites assert it; the CI **parity** job has Rust append a chain,
+Python rebuild it byte-for-byte and verify it, then Rust verify the Python-rebuilt log. `verify`
+catches any edit/reorder/mid-deletion at the first bad `seq` (a tail truncation is the known
+keyless limit — §11.2).
+
+```
+# Verify (Python oracle): recompute the chain + reproduce it byte-for-byte from the same fields.
+python3 - <<'PY'
+import sys, pathlib; sys.path.insert(0, "tools")
+from cogstore import audit
+tv = pathlib.Path("docs/protocol/testvectors/audit/log.jsonl")
+print(audit.verify(audit.read_log(tv)))   # {'n': 4, 'head_self': '65a00c0a…'}
+PY
+
+# Regenerate from scratch with the native CLI:
+gearbox audit append --log audit/log.jsonl --ts 2026-06-14T15:00:00Z --event add_store \
+  --subject acme-internal --detail key_id=acme-signing-2026 \
+  --detail fingerprint=56475aa7…708c --detail result=ok
+# …verify_catalog, install, policy_deny — see crates/gearbox/tests/audit.rs for the exact fields.
+```
+
 ## Regenerate
 
 Deterministic from the seed above. Re-running the generator yields byte-identical

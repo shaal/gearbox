@@ -17,7 +17,7 @@ use std::process::exit;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde_json::Value;
 
-use gearbox::{bundle, catalog, server, signing, store};
+use gearbox::{audit, bundle, catalog, server, signing, store};
 
 const USAGE: &str = "\
 usage:
@@ -31,6 +31,8 @@ usage:
   gearbox export  --catalog app-registry.json --store-info store.json --artifacts-dir DIR \\
                   --out BUNDLE --generated-at TS [--sign-seed-hex HEX --key-id ID]
   gearbox import  <bundle-dir> [--expect-fingerprint HEX]
+  gearbox audit append --log FILE --ts TS --event EVENT --subject SUBJ [--detail k=v ...]
+  gearbox audit verify --log FILE
   gearbox serve   --dir DIR [--port N] [--auth-token TOKEN]";
 
 fn main() {
@@ -49,6 +51,14 @@ fn main() {
         },
         Some("export") => cmd_export(&args[2..]),
         Some("import") => cmd_import(&args[2..]),
+        Some("audit") => match args.get(2).map(String::as_str) {
+            Some("append") => cmd_audit_append(&args[3..]),
+            Some("verify") => cmd_audit_verify(&args[3..]),
+            _ => {
+                eprintln!("{USAGE}");
+                2
+            }
+        },
         Some("serve") => cmd_serve(&args[2..]),
         _ => {
             eprintln!("{USAGE}");
@@ -429,6 +439,107 @@ fn cmd_import(args: &[String]) -> i32 {
         }
         Err(e) => {
             eprintln!("FAIL: {e}");
+            1
+        }
+    }
+}
+
+fn cmd_audit_append(args: &[String]) -> i32 {
+    // `--detail` repeats, which `parse_flags` (a HashMap) cannot hold — pull every `--detail
+    // VALUE` pair out first, then parse the remaining single-valued flags normally.
+    let mut details: Vec<String> = Vec::new();
+    let mut rest: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == "--detail" {
+            match args.get(i + 1) {
+                Some(v) => {
+                    details.push(v.clone());
+                    i += 2;
+                }
+                None => {
+                    eprintln!("--detail needs a key=value");
+                    return 2;
+                }
+            }
+        } else {
+            rest.push(args[i].clone());
+            i += 1;
+        }
+    }
+
+    let (kv, _, _) = match parse_flags(&rest, &[]) {
+        Ok(x) => x,
+        Err(e) => {
+            eprintln!("{e}\n{USAGE}");
+            return 2;
+        }
+    };
+    let (Some(log), Some(ts), Some(event), Some(subject)) = (
+        kv.get("--log"),
+        kv.get("--ts"),
+        kv.get("--event"),
+        kv.get("--subject"),
+    ) else {
+        eprintln!("usage: gearbox audit append --log FILE --ts TS --event EVENT --subject SUBJ [--detail k=v ...]");
+        return 2;
+    };
+    let detail = match audit::parse_details(&details) {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("FAIL: {e}");
+            return 2;
+        }
+    };
+    match audit::append(Path::new(log), ts, event, subject, detail) {
+        Ok(rec) => {
+            let seq = rec.get("seq").and_then(Value::as_i64).unwrap_or(-1);
+            let self_hash = rec.get("self").and_then(Value::as_str).unwrap_or("");
+            println!("appended seq {seq} ({event}) to {log} — self {self_hash}");
+            0
+        }
+        Err(e) => {
+            eprintln!("FAIL: {e}");
+            1
+        }
+    }
+}
+
+fn cmd_audit_verify(args: &[String]) -> i32 {
+    let (kv, _, pos) = match parse_flags(args, &[]) {
+        Ok(x) => x,
+        Err(e) => {
+            eprintln!("{e}\n{USAGE}");
+            return 2;
+        }
+    };
+    let Some(log) = kv.get("--log").or_else(|| pos.first()) else {
+        eprintln!("usage: gearbox audit verify --log FILE");
+        return 2;
+    };
+    // A missing log file is a verify error (a typo'd path must not pass vacuously); an existing
+    // but empty file is a valid 0-record chain (read_log handles that).
+    if !Path::new(log).exists() {
+        eprintln!("FAIL: no such audit log: {log}");
+        return 1;
+    }
+    let records = match audit::read_log(Path::new(log)) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("FAIL: {e}");
+            return 1;
+        }
+    };
+    match audit::verify(&records) {
+        Ok(report) => {
+            println!(
+                "OK: audit log verified — {} record(s), head self {}",
+                report.n, report.head_self
+            );
+            0
+        }
+        Err(brk) => {
+            eprintln!("FAIL: audit chain broken at {brk}");
             1
         }
     }

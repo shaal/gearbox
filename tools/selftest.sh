@@ -7,6 +7,8 @@
 #   5. verify_catalog.py — the A4 verify-before-upload helper (positive + tamper)
 #   6. air-gap bundle — build/sign/verify the bundle manifest (T0-A); conformance vs the
 #                       frozen vector + a tampered-artifact import must fail
+#   7. audit log — append/verify the hash-chained log (T0-B); conformance vs the frozen vector
+#                  + an edited record must fail at the right seq
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -18,7 +20,7 @@ OUT="$(mktemp /tmp/app-registry.XXXXXX.json)"
 MOUT="$(mktemp /tmp/app-registry-mo.XXXXXX.json)"
 trap 'rm -f "$OUT" "$MOUT"' EXIT
 
-echo "== 1/6 conformance vs frozen #1 test vector =="
+echo "== 1/7 conformance vs frozen #1 test vector =="
 python3 - "$TVDIR" "$SEED" "$KEYID" <<'PY'
 import sys, json, pathlib
 sys.path.insert(0, ".")
@@ -34,7 +36,7 @@ assert re["signature"]["sig"] == signed["signature"]["sig"], \
 print("   OK: jcs + signing reproduce the frozen vector byte-for-byte")
 PY
 
-echo "== 2/6 end-to-end (full) generate -> validate -> verify =="
+echo "== 2/7 end-to-end (full) generate -> validate -> verify =="
 python3 catalog_gen.py \
     --cogs-dir testdata/cogs --artifacts-dir testdata/artifacts \
     --store-id cognitum-official --generated-at 2026-06-10T00:00:00Z \
@@ -53,7 +55,7 @@ assert doom["assets"][0]["filename"] == "freedoom1.wad", doom["assets"][0]
 print(f"   OK: valid + verified ({used}); asset carries filename")
 PY
 
-echo "== 3/6 manifests-only (A3 gate): no built binary =="
+echo "== 3/7 manifests-only (A3 gate): no built binary =="
 python3 catalog_gen.py \
     --cogs-dir testdata/cogs --manifests-only \
     --store-id cognitum-official --generated-at 2026-06-10T00:00:00Z --out "$MOUT"
@@ -68,7 +70,7 @@ assert b.get("pending") is True and "sha256" not in b, b
 print("   OK: validates with binary pending (no artifact needed)")
 PY
 
-echo "== 4/6 asset_entry: filename + required_when flow =="
+echo "== 4/7 asset_entry: filename + required_when flow =="
 python3 - <<'PY'
 import sys
 sys.path.insert(0, ".")
@@ -84,7 +86,7 @@ assert e2["path"] == "cogs/arm/x/y" and "required_when" not in e2, e2
 print("   OK: filename + required_when carried; path preferred; required_when omitted when absent")
 PY
 
-echo "== 5/6 verify_catalog.py (A4 verify-before-upload) =="
+echo "== 5/7 verify_catalog.py (A4 verify-before-upload) =="
 python3 verify_catalog.py "$TVDIR/catalog.signed.json" --key-id "$KEYID" --pubkey-b64 "$PUB"
 python3 - "$TVDIR" > "$MOUT.tamper" <<'PY'
 import sys, json, pathlib
@@ -99,7 +101,7 @@ else
 fi
 rm -f "$MOUT.tamper"
 
-echo "== 6/6 air-gap bundle (T0-A): conformance + export roundtrip + tamper =="
+echo "== 6/7 air-gap bundle (T0-A): conformance + export roundtrip + tamper =="
 python3 - "$TVDIR/bundle" "$SEED" "$KEYID" <<'PY'
 import sys, json, pathlib, shutil, tempfile
 sys.path.insert(0, ".")
@@ -137,6 +139,48 @@ try:
 except Exception as e:
     print(f"   OK: tampered artifact correctly REJECTED ({e})")
 shutil.rmtree(work)
+PY
+
+echo "== 7/7 audit log (T0-B): conformance + append roundtrip + tamper =="
+python3 - "$TVDIR/audit" <<'PY'
+import sys, pathlib, tempfile
+sys.path.insert(0, ".")
+from cogstore import audit
+tv = pathlib.Path(sys.argv[1])
+frozen = (tv / "log.jsonl").read_bytes()
+
+# (a) conformance: verify the frozen chain + recompute every self hash
+recs = audit.read_log(tv / "log.jsonl")
+rep = audit.verify(recs)
+assert rep["head_self"] == "65a00c0ac86fd4ad8b16919bc9b5022939481ce87bcb783818ae8d78ae8ea2d3", rep
+for r in recs:
+    assert audit.record_self(r) == r["self"], r["seq"]
+print(f"   OK: verify passes; {rep['n']} self hashes recomputed (head {rep['head_self'][:12]}…)")
+
+# (b) append the same fields to a fresh log -> reproduce the frozen bytes exactly
+work = pathlib.Path(tempfile.mkdtemp()) / "log.jsonl"
+audit.append(work, "2026-06-14T15:00:00Z", "add_store", "acme-internal",
+             {"key_id": "acme-signing-2026",
+              "fingerprint": "56475aa75463474c0285df5dbf2bcab73da651358839e9b77481b2eab107708c",
+              "result": "ok"})
+audit.append(work, "2026-06-14T15:01:00Z", "verify_catalog", "acme-internal",
+             {"key_id": "acme-signing-2026", "result": "ok"})
+audit.append(work, "2026-06-14T15:02:00Z", "install", "acme-internal/doom@0.1.0",
+             {"sha256": "238a6e038d11d2b9851396b8ec167ad2f5c8724525100473c2a3f06c9ea43561", "result": "ok"})
+audit.append(work, "2026-06-14T15:03:00Z", "policy_deny", "cognitum-official/doom",
+             {"reason": "store not allowed — managed policy", "result": "deny"})
+assert work.read_bytes() == frozen, "appended log differs from the frozen vector"
+print("   OK: append reproduces the frozen log byte-for-byte")
+
+# (c) edit a record -> verify MUST fail at the right seq (the audit acceptance criterion)
+recs[1]["detail"]["result"] = "EVIL"
+try:
+    audit.verify(recs)
+    print("   UNEXPECTED: tampered log verified"); sys.exit(1)
+except audit.ChainBreak as e:
+    assert e.seq == 1, e
+    print(f"   OK: edited record correctly REJECTED at {e}")
+work.unlink()
 PY
 
 echo "ALL CHECKS PASSED"

@@ -54,7 +54,7 @@ SBOM / vuln* layer that procurement increasingly checks is unbuilt.
 
 | Capability | Expectation | Status | Notes |
 |---|---|---|---|
-| Audit / event log | Append-only trail of add/install/verify/policy | **Not started** | a Tier-0 proof point |
+| Audit / event log | Append-only trail of add/install/verify/policy | **Built** (ref) | `gearbox audit append`/`verify` (T0-B): hash-chained JSONL, tamper-evident offline (keyless); frozen vector + Rust↔Python parity (protocol §11) |
 | Key rotation overlap + revocation | Rotate/kill a compromised key | **Partial / Specced** | date-scoped `key_id` shipped; overlap + revocation list deferred (protocol §9) |
 | Transparency log (Rekor-style) | Tamper-evident publish record | **Not started** | protocol §9 open item |
 | Compliance posture (SOC2 / FIPS / pen-test) | Procurement gate | **Not started** | N/A until there's a service to certify |

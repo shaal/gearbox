@@ -8,7 +8,7 @@ matching the Python `tools/` reference and pinned to the frozen test vectors in
 ## Build / test / run
 
 ```bash
-cargo test                                   # 33 tests (jcs/verify + catalog + store-info + server + resolve + bundle)
+cargo test                                   # 43 tests (jcs/verify + catalog + store-info + server + resolve + bundle + audit)
 
 gearbox catalog --cogs-dir DIR (--artifacts-dir DIR | --manifests-only) \
                 --store-id ID --generated-at TS --out FILE [--sign-seed-hex HEX --key-id ID]
@@ -20,6 +20,8 @@ gearbox store-info verify <store.json>       # prints fingerprints + checks self
 gearbox export  --catalog app-registry.json --store-info store.json --artifacts-dir DIR \
                 --out BUNDLE --generated-at TS [--sign-seed-hex HEX --key-id ID]  # air-gap bundle
 gearbox import  <bundle-dir> [--expect-fingerprint HEX]      # verify + install via file:// (T0-A)
+gearbox audit append --log FILE --ts TS --event EVENT --subject SUBJ [--detail k=v ...]  # T0-B
+gearbox audit verify --log FILE              # recompute the hash chain; fail at the first bad seq
 gearbox serve   --dir DIR [--port N] [--auth-token TOKEN]   # reference store server (dev)
 ```
 
@@ -33,8 +35,9 @@ src/store.rs     build / validate / fingerprint / self-verify store.json (protoc
 src/resolve.rs   multi-store resolution: namespacing / priority / pins (Phase 2 §6) — pure, no I/O
 src/server.rs    minimal dependency-free HTTP store server (dev): store.json + catalog + artifacts
 src/bundle.rs    air-gap bundle (Phase 3 T0-A): export/import a signed file://-installable store (§10)
-src/main.rs      `gearbox` CLI: catalog / sign / verify / store-info / export / import / serve
-tests/           vector.rs · catalog.rs · store.rs · server.rs · resolve.rs · bundle.rs
+src/audit.rs     audit log (Phase 3 T0-B): append/verify a hash-chained, tamper-evident JSONL log (§11)
+src/main.rs      `gearbox` CLI: catalog / sign / verify / store-info / export / import / audit / serve
+tests/           vector.rs · catalog.rs · store.rs · server.rs · resolve.rs · bundle.rs · audit.rs
 ```
 
 End-to-end demos:
@@ -44,6 +47,9 @@ End-to-end demos:
 - [`examples/bundle-airgap.sh`](../../examples/bundle-airgap.sh) exports a signed air-gap bundle,
   carries it across an "air gap" as a `tar`, imports it via `file://` with the same verification,
   and shows a single tampered artifact byte being refused.
+- [`examples/audit-log.sh`](../../examples/audit-log.sh) records a trust-affecting sequence into a
+  hash-chained log, verifies it offline, then shows an edited and a deleted record both being
+  caught at the right `seq`.
 
 ## Conformance & cross-implementation parity
 
@@ -63,8 +69,8 @@ and gated by the vectors + parity.
 
 Full parity with the Python tools (generate / sign / verify), plus `store-info` (Phase 2 TOFU
 identity), `serve` (a dependency-free reference store server), `resolve` (multi-store
-namespacing / priority / pins), and `export`/`import` (Phase 3 T0-A air-gap bundle, with a
-`tools/cogstore/bundle.py` parity oracle). Next (Phase 2+): wiring these into the seed's
-multi-store add flow + UX (specced in `docs/cross-repo/`). Dependencies: `serde_json`,
-`ed25519-dalek`, `base64`, `toml`, `sha2`, `hex` — the server, resolver, and bundle add none
-(std-only); no `clap`.
+namespacing / priority / pins), `export`/`import` (Phase 3 T0-A air-gap bundle), and `audit`
+(Phase 3 T0-B hash-chained event log) — both with Python parity oracles in `tools/cogstore/`.
+Next (Phase 3): managed-mode policy (T0-C, → ADR-0003). Dependencies: `serde_json`,
+`ed25519-dalek`, `base64`, `toml`, `sha2`, `hex` — the server, resolver, bundle, and audit log
+add none (std-only); no `clap`.
