@@ -72,6 +72,10 @@ End-to-end demos:
   stage a self-hostable HTTPS store (signed `store.json` + catalog + sha256-verified artifacts at
   their catalog paths), optionally with a per-binary attestation and a signed audit head; prints
   the TOFU fingerprint and the Seed store descriptor.
+- [`examples/store-publish.workflow.yml`](../../examples/store-publish.workflow.yml) — a template
+  to copy into your store repo: GitHub Actions that builds gearbox, runs `publish-store.sh` with a
+  `STORE_SIGNING_KEY` secret, and redeploys the store to Pages on every push. (Inert here — it's
+  not under `.github/workflows/`, so it never runs in gearbox's own CI.)
 
 ## Conformance & cross-implementation parity
 
