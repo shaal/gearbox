@@ -68,6 +68,10 @@ End-to-end demos:
 - [`examples/attestation.sh`](../../examples/attestation.sh) signs a provenance+SBOM attestation,
   verifies the signature and the artifact-digest binding, and shows a swapped artifact and a
   tampered field each refused.
+- [`examples/publish-store.sh`](../../examples/publish-store.sh) — operator runbook as a script:
+  stage a self-hostable HTTPS store (signed `store.json` + catalog + sha256-verified artifacts at
+  their catalog paths), optionally with a per-binary attestation and a signed audit head; prints
+  the TOFU fingerprint and the Seed store descriptor.
 
 ## Conformance & cross-implementation parity
 
