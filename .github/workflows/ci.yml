@@ -139,10 +139,17 @@ jobs:
           "$BIN" audit append --log "$LOG" --ts 2026-06-14T15:03:00Z --event policy_deny \
             --subject cognitum-official/doom --detail "reason=store not allowed — managed" --detail result=deny
 
-          # Python verifies the Rust log and rebuilds it byte-for-byte (Rust -> Python)...
-          python3 tools/audit_parity.py "$LOG"
-          # ...then Rust verifies the Python-rebuilt log (Python -> Rust).
+          # Rust signs a head over the chain (tamper-evident -> tamper-proof up to the checkpoint).
+          "$BIN" audit sign-head --log "$LOG" --log-id parity-log --ts "${TV_GENERATED_AT}" \
+            --sign-seed-hex "${TV_SEED}" --key-id "${TV_KEY_ID}" --out head.json
+          # Python verifies the Rust log + rebuilds it byte-for-byte, and re-signs the head
+          # byte-identical + verifies it (Rust -> Python)...
+          python3 tools/audit_parity.py "$LOG" head.json
+          # ...then Rust verifies the Python-rebuilt log, and the signed head against the log.
           "$BIN" audit verify --log "$LOG".rebuilt.jsonl
+          PUB=$(cd tools && python3 -c "from cogstore.signing import public_key_b64; \
+            print(public_key_b64(bytes.fromhex('${TV_SEED}')))")
+          "$BIN" audit verify --log "$LOG" --head head.json --key-id "${TV_KEY_ID}" --pubkey-b64 "$PUB"
 
       - name: Managed policy — Rust signs, Python verifies the same signature
         run: |

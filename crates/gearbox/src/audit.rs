@@ -15,14 +15,15 @@
 //! }
 //! ```
 //!
-//! `prev`/`self` reuse `jcs` + `sha2` only — **no new crypto, no key** (the plan's deferred
-//! "sign the head" upgrade would make it tamper-*proof*, not just tamper-*evident*). Because
-//! `prev` is part of the bytes that `self` hashes, every `self` transitively commits to the whole
-//! prior chain: a flipped byte anywhere breaks `self` here and `prev` on the next record.
+//! `prev`/`self` reuse `jcs` + `sha2` only — **no new crypto, no key** for the chain itself.
+//! Because `prev` is part of the bytes that `self` hashes, every `self` transitively commits to
+//! the whole prior chain: a flipped byte anywhere breaks `self` here and `prev` on the next record.
 //!
 //! Detectable offline by `verify`: any **edit**, **reordering**, or **mid-log deletion** — it
-//! reports the first bad `seq`. A pure *tail* truncation yields a still-valid shorter prefix; that
-//! is the known limit of a keyless chain (see the deferred head-signing note above).
+//! reports the first bad `seq`. A pure *tail* truncation yields a still-valid shorter prefix the
+//! keyless chain alone can't catch; [`sign a head`](build_head) over the tip and `verify_head`
+//! closes that — tamper-*evident* becomes tamper-*proof* up to the signed checkpoint (protocol
+//! §11.4).
 //!
 //! Each stored line is the **JCS canonical bytes** of the record, so an `audit.jsonl` written by
 //! this crate and by the Python oracle (`tools/cogstore/audit.py`) are byte-identical.
@@ -33,6 +34,7 @@ use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 
 use crate::jcs;
+use crate::signing::{self, TrustStore};
 
 /// `prev` of the first record (`seq` 0): 64 hex zeros (no predecessor to chain to).
 pub const ZERO_PREV: &str = "0000000000000000000000000000000000000000000000000000000000000000";
@@ -204,6 +206,122 @@ pub fn verify(records: &[Value]) -> Result<VerifyReport, VerifyBreak> {
     Ok(VerifyReport {
         n: records.len(),
         head_self,
+    })
+}
+
+fn is_hex64(s: &str) -> bool {
+    s.len() == 64
+        && s.bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+/// Build an (unsigned) **signed-head** document — a checkpoint committing the chain's tip
+/// (`count` records ending in `head_self`) so a tail truncation below the checkpoint is
+/// detectable. `head_self` is the cryptographic tie to a specific log (a different log has a
+/// different tip); `log_id` is a human-facing label, signed but not cross-checked against the
+/// log's contents (the records carry no log id).
+pub fn build_head(log_id: &str, count: usize, head_self: &str, signed_at: &str) -> Value {
+    json!({
+        "schema_version": 1,
+        "log_id": log_id,
+        "count": count as i64,
+        "head_self": head_self,
+        "signed_at": signed_at,
+    })
+}
+
+/// A successfully checked signed head.
+#[derive(Debug, Clone)]
+pub struct HeadReport {
+    pub key_id: String,
+    pub log_id: String,
+    pub count: usize,
+}
+
+fn validate_head(head: &Value) -> Result<(), String> {
+    let o = head.as_object().ok_or("invalid head: not an object")?;
+    if o.get("schema_version").and_then(Value::as_i64) != Some(1) {
+        return Err("invalid head: schema_version must be 1".into());
+    }
+    if !o
+        .get("log_id")
+        .and_then(Value::as_str)
+        .is_some_and(|s| !s.is_empty())
+    {
+        return Err("invalid head: log_id missing".into());
+    }
+    if !o
+        .get("count")
+        .and_then(Value::as_i64)
+        .is_some_and(|n| n >= 0)
+    {
+        return Err("invalid head: count must be a non-negative integer".into());
+    }
+    if !o
+        .get("head_self")
+        .and_then(Value::as_str)
+        .is_some_and(is_hex64)
+    {
+        return Err("invalid head: head_self must be 64 lowercase hex".into());
+    }
+    if !o
+        .get("signed_at")
+        .and_then(Value::as_str)
+        .is_some_and(|s| !s.is_empty())
+    {
+        return Err("invalid head: signed_at missing".into());
+    }
+    Ok(())
+}
+
+/// Verify a signed head against a (chain-verified) log: its signature, then that the records
+/// still contain its signed prefix intact — `len >= count` and `records[count-1].self ==
+/// head_self`. This makes everything **up to the checkpoint tamper-proof**: lopping off records
+/// below `count`, or any edit inside the prefix (which would change `head_self`), fails.
+///
+/// Records appended *after* the head was signed are beyond the checkpoint — re-sign the head to
+/// extend the guarantee (see protocol §11.4). Callers should run [`verify`] first; this checks
+/// the head, not the chain's internal integrity.
+pub fn verify_head(
+    records: &[Value],
+    head: &Value,
+    trust: &TrustStore,
+) -> Result<HeadReport, String> {
+    validate_head(head)?;
+    let key_id =
+        signing::verify_document(head, trust).map_err(|e| format!("head signature: {e}"))?;
+    let count = head.get("count").and_then(Value::as_i64).unwrap_or(0);
+    let want_self = head.get("head_self").and_then(Value::as_str).unwrap_or("");
+    let log_id = head
+        .get("log_id")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+
+    if (records.len() as i64) < count {
+        return Err(format!(
+            "log truncated: {} record(s) < signed count {count}",
+            records.len()
+        ));
+    }
+    let got_self = if count == 0 {
+        ZERO_PREV
+    } else {
+        records[(count - 1) as usize]
+            .get("self")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+    };
+    if got_self != want_self {
+        return Err(format!(
+            "signed head does not match the log at record {} (chain diverged)",
+            count.max(1) - 1
+        ));
+    }
+    Ok(HeadReport {
+        key_id,
+        log_id,
+        count: count as usize,
     })
 }
 

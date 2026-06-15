@@ -93,7 +93,7 @@ crates/gearbox/                                 # native Rust reference (gearbox
   src/ (jcs · signing · catalog · store · resolve · server · bundle · audit · policy · attest · CLI) · tests/ — byte-for-byte vs the vectors + Python parity
 examples/store-loop.sh                          # e2e demo: serve -> TOFU -> verify catalog -> fetch+hash artifact
 examples/bundle-airgap.sh                       # e2e demo: export -> tar -> air-gap import via file:// -> tamper refused (T0-A)
-examples/audit-log.sh                           # e2e demo: append -> verify hash-chained log -> edit/delete refused (T0-B)
+examples/audit-log.sh                           # e2e demo: append -> verify -> sign head (defeats truncation) -> edit/delete refused (T0-B)
 examples/managed-mode.sh                        # e2e demo: sign policy -> enforce (allow/deny + audit) -> forgery refused (T0-C)
 examples/attestation.sh                         # e2e demo: sign provenance+SBOM -> verify sig + digest binding -> swap/forgery refused
 ```

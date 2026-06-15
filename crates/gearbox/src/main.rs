@@ -32,7 +32,8 @@ usage:
                   --out BUNDLE --generated-at TS [--sign-seed-hex HEX --key-id ID]
   gearbox import  <bundle-dir> [--expect-fingerprint HEX]
   gearbox audit append --log FILE --ts TS --event EVENT --subject SUBJ [--detail k=v ...]
-  gearbox audit verify --log FILE
+  gearbox audit sign-head --log FILE --log-id ID --ts TS --sign-seed-hex HEX --key-id ID --out FILE
+  gearbox audit verify --log FILE [--head head.json --key-id ID --pubkey-b64 B64]
   gearbox policy create --out FILE --sign-seed-hex HEX --key-id ID \\
                   [--allow-stores a,b] [--deny-public] [--forced-pin cog=store ...] [--allow-user-add-store]
   gearbox policy verify <policy.json> --key-id ID --pubkey-b64 B64
@@ -63,6 +64,7 @@ fn main() {
         Some("audit") => match args.get(2).map(String::as_str) {
             Some("append") => cmd_audit_append(&args[3..]),
             Some("verify") => cmd_audit_verify(&args[3..]),
+            Some("sign-head") => cmd_audit_sign_head(&args[3..]),
             _ => {
                 eprintln!("{USAGE}");
                 2
@@ -556,16 +558,106 @@ fn cmd_audit_verify(args: &[String]) -> i32 {
             return 1;
         }
     };
-    match audit::verify(&records) {
-        Ok(report) => {
+    let report = match audit::verify(&records) {
+        Ok(r) => r,
+        Err(brk) => {
+            eprintln!("FAIL: audit chain broken at {brk}");
+            return 1;
+        }
+    };
+    println!(
+        "OK: audit log verified — {} record(s), head self {}",
+        report.n, report.head_self
+    );
+
+    // Optional: also check a signed head, making the log tamper-PROOF up to that checkpoint.
+    if let Some(head_path) = kv.get("--head") {
+        let trust = match trust_from_args(&kv) {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("{e}");
+                return 2;
+            }
+        };
+        let head = match read_json(head_path) {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("FAIL: {e}");
+                return 1;
+            }
+        };
+        match audit::verify_head(&records, &head, &trust) {
+            Ok(h) => println!(
+                "OK: signed head verified by {} — log {:?}, {} record(s) checkpointed (tamper-proof up to here)",
+                h.key_id, h.log_id, h.count
+            ),
+            Err(e) => {
+                eprintln!("FAIL: signed head: {e}");
+                return 1;
+            }
+        }
+    }
+    0
+}
+
+fn cmd_audit_sign_head(args: &[String]) -> i32 {
+    let (kv, _, _) = match parse_flags(args, &[]) {
+        Ok(x) => x,
+        Err(e) => {
+            eprintln!("{e}\n{USAGE}");
+            return 2;
+        }
+    };
+    let (Some(log), Some(log_id), Some(ts), Some(seed_hex), Some(key_id), Some(out)) = (
+        kv.get("--log"),
+        kv.get("--log-id"),
+        kv.get("--ts"),
+        kv.get("--sign-seed-hex"),
+        kv.get("--key-id"),
+        kv.get("--out"),
+    ) else {
+        eprintln!("usage: gearbox audit sign-head --log FILE --log-id ID --ts TS --sign-seed-hex HEX --key-id ID --out FILE");
+        return 2;
+    };
+    if !Path::new(log).exists() {
+        eprintln!("FAIL: no such audit log: {log}");
+        return 1;
+    }
+    let records = match audit::read_log(Path::new(log)) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("FAIL: {e}");
+            return 1;
+        }
+    };
+    // The chain must verify before we vouch for its head.
+    let report = match audit::verify(&records) {
+        Ok(r) => r,
+        Err(brk) => {
+            eprintln!("FAIL: refusing to sign head of a broken chain — {brk}");
+            return 1;
+        }
+    };
+    let seed = match decode_seed(seed_hex) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("FAIL: {e}");
+            return 2;
+        }
+    };
+    let head = audit::build_head(log_id, report.n, &report.head_self, ts);
+    let result =
+        signing::sign_document(&head, &seed, key_id).and_then(|signed| write_json(out, &signed));
+    match result {
+        Ok(()) => {
             println!(
-                "OK: audit log verified — {} record(s), head self {}",
+                "wrote {out} — signed head for log {log_id} ({} record(s), self {}) by {key_id}",
                 report.n, report.head_self
             );
             0
         }
-        Err(brk) => {
-            eprintln!("FAIL: audit chain broken at {brk}");
+        Err(e) => {
+            eprintln!("FAIL: {e}");
             1
         }
     }

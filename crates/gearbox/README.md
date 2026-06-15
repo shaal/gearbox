@@ -8,7 +8,7 @@ matching the Python `tools/` reference and pinned to the frozen test vectors in
 ## Build / test / run
 
 ```bash
-cargo test                                   # 62 tests (jcs/verify + catalog + store-info + server + resolve + bundle + audit + policy + attest)
+cargo test                                   # 69 tests (jcs/verify + catalog + store-info + server + resolve + bundle + audit + policy + attest)
 
 gearbox catalog --cogs-dir DIR (--artifacts-dir DIR | --manifests-only) \
                 --store-id ID --generated-at TS --out FILE [--sign-seed-hex HEX --key-id ID]
@@ -21,7 +21,8 @@ gearbox export  --catalog app-registry.json --store-info store.json --artifacts-
                 --out BUNDLE --generated-at TS [--sign-seed-hex HEX --key-id ID]  # air-gap bundle
 gearbox import  <bundle-dir> [--expect-fingerprint HEX]      # verify + install via file:// (T0-A)
 gearbox audit append --log FILE --ts TS --event EVENT --subject SUBJ [--detail k=v ...]  # T0-B
-gearbox audit verify --log FILE              # recompute the hash chain; fail at the first bad seq
+gearbox audit sign-head --log FILE --log-id ID --ts TS --sign-seed-hex HEX --key-id ID --out FILE  # checkpoint
+gearbox audit verify --log FILE [--head head.json --key-id ID --pubkey-b64 B64]  # chain (+ tamper-proof head)
 gearbox policy create --out FILE --sign-seed-hex HEX --key-id ID \           # T0-C managed mode
                 [--allow-stores a,b] [--deny-public] [--forced-pin cog=store ...] [--allow-user-add-store]
 gearbox policy verify <policy.json> --key-id ID --pubkey-b64 B64   # fail-closed signature gate
@@ -59,8 +60,8 @@ End-to-end demos:
   carries it across an "air gap" as a `tar`, imports it via `file://` with the same verification,
   and shows a single tampered artifact byte being refused.
 - [`examples/audit-log.sh`](../../examples/audit-log.sh) records a trust-affecting sequence into a
-  hash-chained log, verifies it offline, then shows an edited and a deleted record both being
-  caught at the right `seq`.
+  hash-chained log, verifies it offline, signs a head so a tail truncation is caught
+  (tamper-evident → tamper-proof), then shows an edited and a deleted record both refused.
 - [`examples/managed-mode.sh`](../../examples/managed-mode.sh) signs a managed policy, enforces it
   (ACME allowed, public store denied + `policy_deny`-audited), and shows a forged policy refused
   fail-closed.
