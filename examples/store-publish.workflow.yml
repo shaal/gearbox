@@ -51,10 +51,11 @@ jobs:
       - name: Build the doom ARM binary
         run: |
           mkdir -p "$GITHUB_WORKSPACE/staged/cogs/arm/wads"
-          docker build -t cog-doom-arm -f cog/Dockerfile cog
-          cid=$(docker create cog-doom-arm)
-          docker cp "$cid:/out/cog-doom-arm" "$GITHUB_WORKSPACE/staged/cogs/arm/cog-doom-arm"   # adjust path per your Dockerfile
-          docker rm "$cid"
+          # Extract the built binary with buildx `-o` (exports the final-stage filesystem). For a
+          # `FROM scratch` image the `docker create`/`docker cp` route fails — "no command
+          # specified" — so prefer this. Adjust the in-image path to match your Dockerfile.
+          docker build -o type=local,dest=out -f cog/Dockerfile cog
+          mv out/cog-doom-arm "$GITHUB_WORKSPACE/staged/cogs/arm/cog-doom-arm"
 
       - name: Fetch FreeDoom WAD
         run: |
