@@ -160,6 +160,26 @@ jobs:
           # Rust verifies its own signed policy too (fail-closed gate).
           "$BIN" policy verify policy.json --key-id "${TV_KEY_ID}" --pubkey-b64 "$PUB"
 
+      - name: Attestation — Rust signs, Python re-signs byte-identical + verifies the binding
+        run: |
+          set -euo pipefail
+          BIN=crates/gearbox/target/debug/gearbox
+          PUB=$(cd tools && python3 -c "from cogstore.signing import public_key_b64; \
+            print(public_key_b64(bytes.fromhex('${TV_SEED}')))")
+          ART=tools/testdata/artifacts/cogs/arm/cog-doom-arm
+
+          # Rust authors + signs a provenance+SBOM attestation over a real artifact...
+          "$BIN" attest create --artifact "$ART" --cog doom --version 0.1.0 \
+            --artifact-path cogs/arm/cog-doom-arm --builder cogs-ci \
+            --source-repo github.com/cognitum-one/cogs --source-commit abc1234def5678 \
+            --built-at "${TV_GENERATED_AT}" \
+            --package freedoom=0.13.0=BSD-3-Clause=7323bcc168c5a45ff10749b339960e98314740a734c30d4b9f3337001f9e703d \
+            --sign-seed-hex "${TV_SEED}" --key-id "${TV_KEY_ID}" --out attestation.json
+          # ...Python re-signs the body byte-identical + verifies (Rust signs -> Python verifies).
+          python3 tools/attest_parity.py attestation.json
+          # Rust verifies its own attestation incl. the artifact digest binding.
+          "$BIN" attest verify attestation.json --key-id "${TV_KEY_ID}" --pubkey-b64 "$PUB" --artifact "$ART"
+
   # ---- Required: style + lints. ----
   lint:
     name: Lint (fmt + clippy)

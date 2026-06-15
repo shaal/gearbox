@@ -24,12 +24,13 @@ Status legend: **Built** (implemented + tested) · **Partial** · **Specced** (d
 | Reproducible / deterministic build | Re-run → identical artifact (auditable) | **Built** | Ed25519 determinism + passed-in `generated_at` |
 | Integrity at install | Hash-checked against the *signed* manifest | **Built** (spec) | B5 spec; demo checks sha256 against verified catalog |
 | Store identity + trust bootstrap | Provenance of *who* published | **Built** (ref) | ADR-0002, `store.json`, `store-info`, demo |
-| SBOM per cog | Component inventory for vuln mgmt | **Not started** | enhancements §D |
-| Build provenance / attestations (SLSA) | "How was this built" | **Not started** | enhancements §D (determinism is a partial enabler) |
+| SBOM per cog | Component inventory for vuln mgmt | **Built (minimal)** | `gearbox attest` SBOM block (declared packages); signed + digest-bound, protocol §13. Live transitive scanning deferred |
+| Build provenance / attestations (SLSA) | "How was this built" | **Built (minimal)** | `gearbox attest create/verify`: signed provenance bound to `sha256(artifact)`, frozen vector + Rust↔Python parity (§13). Repo-native shape; conformant in-toto/SPDX deferred |
 | Vulnerability / advisory feed | Flag installed cogs with CVEs | **Not started** | enhancements §D |
 
 **Read:** the cryptographic core is genuinely strong and ahead of most. The *attestation /
-SBOM / vuln* layer that procurement increasingly checks is unbuilt.
+SBOM* layer now has a minimal, signed, repo-native reference (`gearbox attest`, protocol §13);
+conformant in-toto/SPDX, live transitive-dependency scanning, and the *vuln* feed remain to build.
 
 ## 2. Identity & access
 

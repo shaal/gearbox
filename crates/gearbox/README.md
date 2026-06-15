@@ -8,7 +8,7 @@ matching the Python `tools/` reference and pinned to the frozen test vectors in
 ## Build / test / run
 
 ```bash
-cargo test                                   # 54 tests (jcs/verify + catalog + store-info + server + resolve + bundle + audit + policy)
+cargo test                                   # 62 tests (jcs/verify + catalog + store-info + server + resolve + bundle + audit + policy + attest)
 
 gearbox catalog --cogs-dir DIR (--artifacts-dir DIR | --manifests-only) \
                 --store-id ID --generated-at TS --out FILE [--sign-seed-hex HEX --key-id ID]
@@ -27,6 +27,10 @@ gearbox policy create --out FILE --sign-seed-hex HEX --key-id ID \           # T
 gearbox policy verify <policy.json> --key-id ID --pubkey-b64 B64   # fail-closed signature gate
 gearbox policy check  --policy policy.json --key-id ID --pubkey-b64 B64 --stores stores.json --ref REF \
                 [--audit-log FILE --ts TS]   # dry-run: what a managed device resolves (or denies + audits)
+gearbox attest create --artifact FILE --cog ID --version VER --builder B \      # provenance + SBOM
+                --source-repo R --source-commit C --built-at TS [--artifact-path PATH] \
+                [--package name=version=license=sha256 ...] --sign-seed-hex HEX --key-id ID --out FILE
+gearbox attest verify <attestation.json> --key-id ID --pubkey-b64 B64 [--artifact FILE]  # sig + digest binding
 gearbox serve   --dir DIR [--port N] [--auth-token TOKEN]   # reference store server (dev)
 ```
 
@@ -42,8 +46,9 @@ src/server.rs    minimal dependency-free HTTP store server (dev): store.json + c
 src/bundle.rs    air-gap bundle (Phase 3 T0-A): export/import a signed file://-installable store (§10)
 src/audit.rs     audit log (Phase 3 T0-B): append/verify a hash-chained, tamper-evident JSONL log (§11)
 src/policy.rs    managed-mode policy (Phase 3 T0-C): signed policy.json + projection in front of resolve (§12)
-src/main.rs      `gearbox` CLI: catalog / sign / verify / store-info / export / import / audit / policy / serve
-tests/           vector.rs · catalog.rs · store.rs · server.rs · resolve.rs · bundle.rs · audit.rs · policy.rs
+src/attest.rs    provenance + SBOM attestation: signed sidecar bound to sha256(artifact) (§13)
+src/main.rs      `gearbox` CLI: catalog / sign / verify / store-info / export / import / audit / policy / attest / serve
+tests/           vector.rs · catalog.rs · store.rs · server.rs · resolve.rs · bundle.rs · audit.rs · policy.rs · attest.rs
 ```
 
 End-to-end demos:
@@ -59,6 +64,9 @@ End-to-end demos:
 - [`examples/managed-mode.sh`](../../examples/managed-mode.sh) signs a managed policy, enforces it
   (ACME allowed, public store denied + `policy_deny`-audited), and shows a forged policy refused
   fail-closed.
+- [`examples/attestation.sh`](../../examples/attestation.sh) signs a provenance+SBOM attestation,
+  verifies the signature and the artifact-digest binding, and shows a swapped artifact and a
+  tampered field each refused.
 
 ## Conformance & cross-implementation parity
 
@@ -79,7 +87,8 @@ and gated by the vectors + parity.
 Full parity with the Python tools (generate / sign / verify), plus `store-info` (Phase 2 TOFU
 identity), `serve` (a dependency-free reference store server), `resolve` (multi-store
 namespacing / priority / pins), `export`/`import` (Phase 3 T0-A air-gap bundle), `audit`
-(Phase 3 T0-B hash-chained event log), and `policy` (Phase 3 T0-C managed mode) — the signing
-paths all have Python parity oracles in `tools/cogstore/`. Tier 0 is complete. Dependencies:
-`serde_json`, `ed25519-dalek`, `base64`, `toml`, `sha2`, `hex` — the server, resolver, bundle,
-audit log, and policy add none (std-only); no `clap`.
+(Phase 3 T0-B hash-chained event log), `policy` (Phase 3 T0-C managed mode), and `attest`
+(provenance + SBOM attestation) — the signing paths all have Python parity oracles in
+`tools/cogstore/`. Tier 0 is complete. Dependencies: `serde_json`, `ed25519-dalek`, `base64`,
+`toml`, `sha2`, `hex` — the server, resolver, bundle, audit log, policy, and attestation add none
+(std-only); no `clap`.

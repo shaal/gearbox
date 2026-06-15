@@ -392,3 +392,46 @@ A frozen vector lives in [`testvectors/policy/`](testvectors/policy/) (`policy.s
 (`tools/cogstore/policy.py`) are pinned to it and cross-checked **byte-for-byte** by the CI
 parity job — the signing guarantee §7.4 makes for the catalog, extended to the policy document.
 The projection/resolution itself is Rust-only and covered by the crate's tests.
+
+## 13. Provenance + SBOM attestation (`attestation.json`)
+
+A **signed** sidecar that binds an artifact to *where it came from* (SLSA-style provenance) and
+*what is inside it* (an SBOM), verifiable offline. A minimal, repo-native Tier-0-shaped subset of
+SLSA/SPDX — the field names are deliberately standards-shaped so emitting real in-toto/SPDX later
+is a reshaping, not a redesign.
+
+```jsonc
+{
+  "schema_version": 1,
+  "subject": { "cog": "doom", "version": "0.1.0",
+               "artifact": "cogs/arm/cog-doom-arm", "sha256": "238a6e0…" },  // the digest binding
+  "provenance": { "builder": "cogs-ci", "source_repo": "github.com/…/cogs",
+                  "source_commit": "abc123…", "built_at": "2026-06-14T00:00:00Z" },
+  "sbom": { "packages": [ { "name": "freedoom", "version": "0.13.0",
+                            "license": "BSD-3-Clause", "sha256": "7323…" } ] },
+  "signature": { "key_id": "…", "alg": "ed25519", "sig": "…" }   // §7.2
+}
+```
+
+### 13.1 Two independent guards
+
+The whole document — including `subject.sha256` — is signed (§7), so tampering the provenance or
+SBOM breaks the **signature**; swapping the artifact breaks the **`sha256` digest binding**. A
+full `verify` therefore needs *both* the trusted key and the artifact bytes. The attestation is
+**evidence**, not access control, and ships no new crypto (reuses `jcs`/`signing`/`sha2`).
+
+### 13.2 CLI & test vector
+
+- **`gearbox attest create --artifact FILE --cog ID --version VER --builder B --source-repo R
+  --source-commit C --built-at TS [--artifact-path PATH] [--package name=version=license=sha256 …]
+  --sign-seed-hex HEX --key-id ID --out FILE`** — hash the artifact, build + sign the attestation.
+- **`gearbox attest verify <attestation.json> --key-id ID --pubkey-b64 B64 [--artifact FILE]`** —
+  verify the signature (and, when `--artifact` is given, the digest binding).
+
+A frozen vector lives in [`testvectors/attestation/`](testvectors/attestation/)
+(`attestation.signed.json` + `attestation.canonical.json`). The Rust crate (`attest.rs`) and the
+Python oracle (`tools/cogstore/attest.py`) are pinned to it and cross-checked **byte-for-byte** by
+the CI parity job, exactly as §7.4 does for the catalog. *Scope:* the SBOM lists **declared**
+packages (provenance + dependencies as supplied by the publisher), not live transitive dependency
+scanning, and the format is repo-native rather than conformant in-toto/SPDX — both are deliberate
+Tier-0 boundaries with a clean forward path.
